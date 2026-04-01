@@ -1,17 +1,13 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ghcr.io/${GITHUB_OWNER:-local}/${GITHUB_IMAGE:-dimension-brawl}:local
-    container_name: dimension-brawl-app
+    image: ghcr.io/e5sub/ciyuan-online:latest
+    container_name: ciyuan-online
     restart: unless-stopped
+    network_mode: host
     environment:
       PORT: 4000
-      DB_HOST: db
+      DB_HOST: 127.0.0.1
       DB_PORT: 3306
-      DB_NAME: ${DB_NAME:-dimension_brawl}
-      DB_USER: ${DB_USER:-root}
-      DB_PASSWORD: ${DB_PASSWORD:-123456}
-    ports:
-      - "4000:4000"
+      DB_NAME: ciyuan
+      DB_USER: ciyuan
+      DB_PASSWORD: 123456
