@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="referrer" content="no-referrer"><style rel="stylesheet" type="text/css">@charset "utf-8";
+﻿<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="referrer" content="no-referrer"><style rel="stylesheet" type="text/css">@charset "utf-8";
 
 * { box-sizing: border-box; margin: 0px; padding: 0px; -webkit-tap-highlight-color: transparent; }
 
@@ -1924,6 +1924,9 @@ var ONLINE = {
   token: '',
   profile: null,
   selectedRoleId: 0,
+  leaderboard: null,
+  leaderboardServerId: 0,
+  leaderboardLoading: false,
   loading: false,
   saveTimer: null,
   saveInFlight: false,
@@ -1961,33 +1964,51 @@ function getPersistedGameState() {
 
 function translateMessage(message) {
   var map = {
-    AUTH_REQUIRED: 'Please login first',
-    SESSION_NOT_FOUND: 'Session not found',
-    SESSION_EXPIRED: 'Session expired',
-    ACCOUNT_DISABLED: 'Account disabled',
-    ACCOUNT_NAME_INVALID: 'Invalid account name',
-    PASSWORD_INVALID: 'Invalid password',
-    ACCOUNT_EXISTS: 'Account already exists',
-    REGISTER_OK: 'Register success',
-    LOGIN_INVALID: 'Invalid account or password',
-    LOGIN_OK: 'Login success',
-    SERVER_REQUIRED: 'Please choose a server',
-    SERVER_NOT_FOUND: 'Server not found',
-    SERVER_NOT_AVAILABLE: 'Server not available',
-    ROLE_NAME_INVALID: 'Invalid role name',
-    CLASS_INVALID: 'Invalid class',
-    ROLE_LIMIT_REACHED: 'Role limit reached',
-    ROLE_NAME_EXISTS: 'Role name already exists',
-    ROLE_CREATE_OK: 'Role created',
-    ROLE_ENTER_OK: 'Role entered',
-    ROLE_ID_REQUIRED: 'Role id required',
-    ROLE_NOT_FOUND: 'Role not found',
-    SAVE_DATA_INVALID: 'Invalid save data',
-    SAVE_DATA_CORRUPTED: 'Save data corrupted',
-    SAVE_SYNC_OK: 'Save synced',
-    LOGOUT_OK: 'Logged out'
+    AUTH_REQUIRED: '请先登录账号',
+    SESSION_NOT_FOUND: '登录会话不存在',
+    SESSION_EXPIRED: '登录会话已过期',
+    ACCOUNT_DISABLED: '账号不可用',
+    ACCOUNT_NAME_INVALID: '账号格式不正确',
+    PASSWORD_INVALID: '密码格式不正确',
+    ACCOUNT_EXISTS: '账号已存在',
+    REGISTER_OK: '注册成功',
+    LOGIN_INVALID: '账号或密码错误',
+    LOGIN_OK: '登录成功',
+    SERVER_REQUIRED: '请选择区服',
+    SERVER_NOT_FOUND: '区服不存在',
+    SERVER_NOT_AVAILABLE: '区服当前不可用',
+    ROLE_NAME_INVALID: '角色名格式不正确',
+    ROLE_LIMIT_REACHED: '该区服角色数量已达上限',
+    ROLE_NAME_EXISTS: '角色名已存在',
+    ROLE_CREATE_OK: '角色创建成功',
+    ROLE_ENTER_OK: '进入角色成功',
+    ROLE_ID_REQUIRED: '缺少角色 ID',
+    ROLE_NOT_FOUND: '角色不存在',
+    SAVE_DATA_INVALID: '存档数据不正确',
+    SAVE_DATA_CORRUPTED: '存档数据损坏',
+    SAVE_SYNC_OK: '存档同步成功',
+    LOGOUT_OK: '已退出登录'
   };
-  return map[message] || message || 'Request failed';
+  return map[message] || message || '请求失败';
+}
+
+async function loadLeaderboard(serverId) {
+  if (!ONLINE.token) return;
+  ONLINE.leaderboardLoading = true;
+  ONLINE.leaderboardServerId = Number(serverId || 0);
+  try {
+    var qs = ONLINE.leaderboardServerId ? ('?serverId=' + ONLINE.leaderboardServerId) : '';
+    var data = await onlineApi('/api/leaderboard' + qs);
+    ONLINE.leaderboard = data.rankings || [];
+    if (document.getElementById('hub') && document.querySelector('.hub-tab.active')) {
+      var active = document.querySelector('.hub-tab.active');
+      if (active && active.textContent.indexOf('排行') >= 0) renderHub('leaderboard');
+    }
+  } catch (e) {
+    ONLINE.leaderboard = [];
+  } finally {
+    ONLINE.leaderboardLoading = false;
+  }
 }
 
 async function onlineApi(path, options) {
@@ -2004,7 +2025,7 @@ async function onlineApi(path, options) {
   var data = {};
   try { data = await res.json(); } catch(e) {}
   if (data && data.message) data.message = translateMessage(data.message);
-  if (!res.ok) throw new Error(data.message || 'Request failed');
+  if (!res.ok) throw new Error(data.message || '请求失败');
   return data;
 }
 
@@ -2012,6 +2033,7 @@ async function fetchOnlineProfile() {
   if (!ONLINE.token) { ONLINE.profile = null; return null; }
   try {
     ONLINE.profile = await onlineApi('/api/auth/me');
+    ONLINE.leaderboard = null;
     if (ONLINE.selectedRoleId) {
       var role = getSelectedRole();
       if (!role) {
@@ -2024,6 +2046,7 @@ async function fetchOnlineProfile() {
     ONLINE.token = '';
     ONLINE.profile = null;
     ONLINE.selectedRoleId = 0;
+    ONLINE.leaderboard = null;
     try { localStorage.removeItem('dcg_token'); } catch(err) {}
     try { localStorage.removeItem('dcg_role_id'); } catch(err) {}
     return null;
@@ -2036,11 +2059,11 @@ function updateTitleAuthStatus() {
   if (!statusEl) return;
   if (ONLINE.profile && ONLINE.profile.user) {
     var role = getSelectedRole();
-    var roleText = role ? (' | Role: ' + role.roleName + ' @ ' + role.serverName) : ' | No role selected';
-    statusEl.innerHTML = 'Account: <span style="color:var(--green)">' + ONLINE.profile.user.accountName + '</span>' + roleText;
+    var roleText = role ? (' | 当前角色: ' + role.roleName + ' @ ' + role.serverName) : ' | 未选择角色';
+    statusEl.innerHTML = '当前账号: <span style="color:var(--green)">' + ONLINE.profile.user.accountName + '</span>' + roleText;
     if (accountEl) accountEl.style.display = 'inline-block';
   } else {
-    statusEl.innerHTML = 'Not logged in. Online account required.';
+    statusEl.innerHTML = '当前未登录，纯网游模式下需要账号进入游戏';
     if (accountEl) accountEl.style.display = 'none';
   }
 }
@@ -2083,29 +2106,29 @@ function showAuthModal(defaultTab) {
   var box = document.createElement('div');
   box.className = 'auth-box';
   box.innerHTML =
-    '<div class="auth-title">Account Center</div>' +
-    '<div class="auth-sub">Keep gameplay unchanged and bind saves to online roles.</div>' +
+    '<div class="auth-title">账号中心</div>' +
+    '<div class="auth-sub">保留原玩法，游戏存档绑定到在线角色。</div>' +
     '<div class="auth-tabs">' +
-      '<button class="auth-tab active" data-tab="login" onclick="switchAuthTab(\'login\')">Login</button>' +
-      '<button class="auth-tab" data-tab="register" onclick="switchAuthTab(\'register\')">Register</button>' +
+      '<button class="auth-tab active" data-tab="login" onclick="switchAuthTab(\'login\')">登录</button>' +
+      '<button class="auth-tab" data-tab="register" onclick="switchAuthTab(\'register\')">注册</button>' +
     '</div>' +
     '<div class="auth-pane active" data-pane="login">' +
-      '<div class="auth-field"><label>Account</label><input id="auth-login-account" maxlength="32" placeholder="6-32 letters, digits or _"></div>' +
-      '<div class="auth-field"><label>Password</label><input id="auth-login-password" type="password" maxlength="72" placeholder="Enter password"></div>' +
+      '<div class="auth-field"><label>账号</label><input id="auth-login-account" maxlength="32" placeholder="6-32位字母、数字或下划线"></div>' +
+      '<div class="auth-field"><label>密码</label><input id="auth-login-password" type="password" maxlength="72" placeholder="输入密码"></div>' +
       '<div class="auth-msg"></div>' +
       '<div class="auth-actions">' +
-        '<button class="auth-btn" onclick="submitLogin()">Login</button>' +
-        '<button class="auth-btn ghost" onclick="closeAuthModal()">Cancel</button>' +
+        '<button class="auth-btn" onclick="submitLogin()">登录</button>' +
+        '<button class="auth-btn ghost" onclick="closeAuthModal()">取消</button>' +
       '</div>' +
     '</div>' +
     '<div class="auth-pane" data-pane="register">' +
-      '<div class="auth-field"><label>Account</label><input id="auth-register-account" maxlength="32" placeholder="6-32 letters, digits or _"></div>' +
-      '<div class="auth-field"><label>Password</label><input id="auth-register-password" type="password" maxlength="72" placeholder="At least 6 chars"></div>' +
-      '<div class="auth-field"><label>Confirm</label><input id="auth-register-confirm" type="password" maxlength="72" placeholder="Repeat password"></div>' +
+      '<div class="auth-field"><label>账号</label><input id="auth-register-account" maxlength="32" placeholder="6-32位字母、数字或下划线"></div>' +
+      '<div class="auth-field"><label>密码</label><input id="auth-register-password" type="password" maxlength="72" placeholder="至少6位"></div>' +
+      '<div class="auth-field"><label>确认密码</label><input id="auth-register-confirm" type="password" maxlength="72" placeholder="再次输入密码"></div>' +
       '<div class="auth-msg"></div>' +
       '<div class="auth-actions">' +
-        '<button class="auth-btn" onclick="submitRegister()">Register</button>' +
-        '<button class="auth-btn ghost" onclick="closeAuthModal()">Cancel</button>' +
+        '<button class="auth-btn" onclick="submitRegister()">注册</button>' +
+        '<button class="auth-btn ghost" onclick="closeAuthModal()">取消</button>' +
       '</div>' +
     '</div>';
   document.body.appendChild(overlay);
@@ -2119,14 +2142,14 @@ async function submitRegister() {
     var accountName = (document.getElementById('auth-register-account').value || '').trim();
     var password = document.getElementById('auth-register-password').value || '';
     var confirmPassword = document.getElementById('auth-register-confirm').value || '';
-    if (password !== confirmPassword) throw new Error('Passwords do not match');
+    if (password !== confirmPassword) throw new Error('两次输入的密码不一致');
     var data = await onlineApi('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify({ accountName: accountName, password: password })
     });
     switchAuthTab('login');
     document.getElementById('auth-login-account').value = accountName;
-    setAuthMessage('success', data.message || 'Register success');
+    setAuthMessage('success', data.message || '注册成功');
   } catch (e) {
     setAuthMessage('error', e.message);
   }
@@ -2156,10 +2179,11 @@ async function logoutOnlineAccount() {
   ONLINE.token = '';
   ONLINE.profile = null;
   ONLINE.selectedRoleId = 0;
+  ONLINE.leaderboard = null;
   try { localStorage.removeItem('dcg_token'); } catch(err) {}
   try { localStorage.removeItem('dcg_role_id'); } catch(err) {}
   updateTitleAuthStatus();
-  gameToast('Logout', 'Online account disconnected.');
+  gameToast('已退出登录', '在线账号已断开。');
 }
 
 function selectRole(roleId) {
@@ -2177,35 +2201,71 @@ function renderRoleModal() {
   var options = '';
   for (var i = 0; i < servers.length; i++) {
     var s = servers[i];
-    options += '<option value="' + s.id + '" ' + (s.status !== 'online' ? 'disabled' : '') + '>' + s.serverName + (s.status === 'online' ? '' : ' (maintenance)') + '</option>';
+    options += '<option value="' + s.id + '" ' + (s.status !== 'online' ? 'disabled' : '') + '>' + s.serverName + (s.status === 'online' ? '' : '（维护中）') + '</option>';
   }
   var roleHtml = '';
   if (!roles.length) {
-    roleHtml = '<div class="role-empty">No role yet. Choose a server and create one.</div>';
+    roleHtml = '<div class="role-empty">当前账号还没有角色，请先选择区服并创建角色。</div>';
   } else {
     for (var j = 0; j < roles.length; j++) {
       var r = roles[j];
       var active = Number(r.id) === Number(ONLINE.selectedRoleId);
       roleHtml += '<button class="role-card' + (active ? ' active' : '') + '" onclick="selectRole(' + r.id + ')">' +
         '<div class="role-card-title">' + r.roleName + '</div>' +
-        '<div class="role-card-meta">' + r.serverName + ' | ' + r.className + ' | Lv.' + r.level + '</div>' +
+        '<div class="role-card-meta">' + r.serverName + ' | Lv.' + r.level + '</div>' +
         '</button>';
     }
   }
   box.innerHTML =
-    '<div class="auth-title">Role Center</div>' +
-    '<div class="auth-sub">One account can own multiple roles across servers, each with isolated save data.</div>' +
+    '<div class="auth-title">角色中心</div>' +
+    '<div class="auth-sub">一个账号可在多个区服创建角色，每个角色拥有独立存档。</div>' +
     '<div class="role-list">' + roleHtml + '</div>' +
-    '<div class="role-form-title">Create Role</div>' +
-    '<div class="auth-field"><label>Server</label><select id="role-server-id" class="role-select">' + options + '</select></div>' +
-    '<div class="auth-field"><label>Role Name</label><input id="role-name" maxlength="24" placeholder="Enter role name"></div>' +
-    '<div class="auth-field"><label>Class</label><select id="role-class-name" class="role-select"><option value="Sword">剑士</option><option value="Mage">法师</option><option value="Ranger">游侠</option><option value="Priest">圣职者</option></select></div>' +
+    '<div class="role-form-title">创建角色</div>' +
+    '<div class="auth-field"><label>区服</label><select id="role-server-id" class="role-select">' + options + '</select></div>' +
+    '<div class="auth-field"><label>角色名</label><input id="role-name" maxlength="24" placeholder="输入角色名"></div>' +
     '<div id="role-msg" class="auth-msg"></div>' +
     '<div class="auth-actions">' +
-      '<button class="auth-btn" onclick="submitCreateRole()">Create</button>' +
-      '<button class="auth-btn" onclick="enterSelectedRole()">Enter</button>' +
-      '<button class="auth-btn ghost" onclick="closeRoleModal()">Close</button>' +
+      '<button class="auth-btn" onclick="submitCreateRole()">创建角色</button>' +
+      '<button class="auth-btn" onclick="enterSelectedRole()">进入游戏</button>' +
+      '<button class="auth-btn ghost" onclick="closeRoleModal()">关闭</button>' +
     '</div>';
+}
+
+function renderLeaderboardTab() {
+  var servers = (ONLINE.profile && ONLINE.profile.servers) ? ONLINE.profile.servers : [];
+  var filterHtml = '<button onclick="loadLeaderboard(0)" style="padding:0.18rem 0.5rem;border:none;border-radius:8px;background:' + (ONLINE.leaderboardServerId ? 'var(--c2)' : 'linear-gradient(135deg,var(--accent),#e85d04)') + ';color:#fff;font-size:0.38rem;cursor:pointer">全服</button>';
+  for (var i = 0; i < servers.length; i++) {
+    var s = servers[i];
+    filterHtml += '<button onclick="loadLeaderboard(' + s.id + ')" style="padding:0.18rem 0.5rem;border:none;border-radius:8px;background:' + (Number(ONLINE.leaderboardServerId) === Number(s.id) ? 'linear-gradient(135deg,var(--accent),#e85d04)' : 'var(--c2)') + ';color:#fff;font-size:0.38rem;cursor:pointer">' + s.serverName + '</button>';
+  }
+
+  var rowsHtml = '';
+  if (ONLINE.leaderboardLoading) {
+    rowsHtml = '<div style="text-align:center;color:var(--dim);padding:1rem 0">加载中...</div>';
+  } else if (!ONLINE.leaderboard || !ONLINE.leaderboard.length) {
+    rowsHtml = '<div style="text-align:center;color:var(--dim);padding:1rem 0">暂无排行数据</div>';
+  } else {
+    for (var j = 0; j < ONLINE.leaderboard.length; j++) {
+      var r = ONLINE.leaderboard[j];
+      rowsHtml += '<div style="display:flex;align-items:center;gap:0.35rem;padding:0.32rem;border-bottom:1px solid var(--border)">' +
+        '<div style="width:1.2rem;font-size:0.5rem;font-weight:900;color:' + (j < 3 ? 'var(--gold)' : 'var(--dim)') + '">#' + (j + 1) + '</div>' +
+        '<div style="flex:1">' +
+          '<div style="font-size:0.46rem;font-weight:700;color:var(--text)">' + r.roleName + '</div>' +
+          '<div style="font-size:0.34rem;color:var(--dim)">' + r.serverName + ' | Lv.' + r.level + '</div>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<div style="font-size:0.46rem;font-weight:900;color:var(--accent)">' + Number(r.powerScore || 0).toLocaleString() + '</div>' +
+          '<div style="font-size:0.32rem;color:var(--dim)">战力</div>' +
+        '</div>' +
+      '</div>';
+    }
+  }
+
+  return '<div style="padding:0.35rem">' +
+    '<div style="font-size:0.65rem;font-weight:900;color:var(--gold);text-align:center;margin-bottom:0.35rem">排行榜</div>' +
+    '<div style="display:flex;gap:0.2rem;flex-wrap:wrap;justify-content:center;margin-bottom:0.35rem">' + filterHtml + '</div>' +
+    '<div style="background:var(--c1);border:1px solid var(--border);border-radius:12px;overflow:hidden">' + rowsHtml + '</div>' +
+  '</div>';
 }
 
 function showRoleModal() {
@@ -2225,11 +2285,9 @@ async function submitCreateRole() {
   try {
     var serverId = Number((document.getElementById('role-server-id') || {}).value || 0);
     var roleName = (document.getElementById('role-name') || {}).value || '';
-    var className = (document.getElementById('role-class-name') || {}).value || '';
-    var classMap = { Sword: '\u5251\u58eb', Mage: '\u6cd5\u5e08', Ranger: '\u6e38\u4fa0', Priest: '\u5723\u804c\u8005' };
     var data = await onlineApi('/api/roles', {
       method: 'POST',
-      body: JSON.stringify({ serverId: serverId, roleName: roleName.trim(), className: classMap[className] || className })
+      body: JSON.stringify({ serverId: serverId, roleName: roleName.trim() })
     });
     ONLINE.profile.roles = data.roles || [];
     if (!ONLINE.selectedRoleId && ONLINE.profile.roles.length) {
@@ -2237,7 +2295,7 @@ async function submitCreateRole() {
       try { localStorage.setItem('dcg_role_id', String(ONLINE.selectedRoleId)); } catch(e) {}
     }
     document.getElementById('role-msg').className = 'auth-msg success';
-    document.getElementById('role-msg').textContent = data.message || 'Role created';
+    document.getElementById('role-msg').textContent = data.message || '角色创建成功';
     renderRoleModal();
     updateTitleAuthStatus();
   } catch (e) {
@@ -2254,7 +2312,7 @@ async function enterSelectedRole() {
     var msg = document.getElementById('role-msg');
     if (msg) {
       msg.className = 'auth-msg error';
-      msg.textContent = 'Please select a role first';
+      msg.textContent = '请先选择一个角色';
     }
     return;
   }
@@ -2734,6 +2792,7 @@ function renderHub(tab) {
   else if (tab === 'battle') bodyHTML = renderBattleTab();
   else if (tab === 'arena') bodyHTML = renderArenaTab();
   else if (tab === 'boss') bodyHTML = renderBossTab();
+  else if (tab === 'leaderboard') bodyHTML = renderLeaderboardTab();
   else if (tab === 'synergy') bodyHTML = renderSynergyTab();
   else if (tab === 'settings') bodyHTML = renderSettingsTab();
   else if (tab === 'codex') bodyHTML = renderCodexTab();
@@ -2745,6 +2804,7 @@ function renderHub(tab) {
     { key: 'battle', label: '关卡' },
     { key: 'arena', label: '竞技场' },
     { key: 'boss', label: 'BOSS' },
+    { key: 'leaderboard', label: '排行' },
     { key: 'synergy', label: '羁绊' },
     { key: 'codex', label: '图鉴' },
     { key: 'settings', label: '⚙' }
@@ -2760,6 +2820,9 @@ function renderHub(tab) {
     ).join('')}</div>
     <div class="hub-body">${bodyHTML}</div>
   `;
+  if (tab === 'leaderboard' && !ONLINE.leaderboardLoading && ONLINE.leaderboard === null) {
+    loadLeaderboard(ONLINE.leaderboardServerId || 0);
+  }
 }
 function renderTeamTab() {
   // Inline formation editor
@@ -6314,31 +6377,25 @@ function renderCodexTab() {
 }
 
 function renderSettingsTab() {
-  var saveSize = 0;
-  try { saveSize = JSON.stringify(G).length; } catch(e) {}
-  var accountName = (ONLINE.profile && ONLINE.profile.user) ? ONLINE.profile.user.accountName : 'Guest';
+  var accountName = (ONLINE.profile && ONLINE.profile.user) ? ONLINE.profile.user.accountName : '未登录';
   var role = getSelectedRole();
-  var roleText = role ? (role.roleName + ' @ ' + role.serverName + ' / ' + role.className + ' / Lv.' + role.level) : 'No role selected';
-  var syncText = ONLINE.token ? (ONLINE.lastSaveAt ? ('Last sync: ' + new Date(ONLINE.lastSaveAt).toLocaleString()) : 'Role save sync is automatic.') : 'No online account connected.';
+  var roleText = role ? (role.roleName + ' @ ' + role.serverName + ' / Lv.' + role.level) : '未选择角色';
+  var syncText = ONLINE.token ? (ONLINE.lastSaveAt ? ('最近同步: ' + new Date(ONLINE.lastSaveAt).toLocaleString()) : '账号仅用于在线保存存档。') : '当前未连接在线账号。';
   return '<div style="padding:0.5rem;text-align:center">' +
-    '<div style="font-size:0.7rem;font-weight:700;margin-bottom:0.8rem;color:var(--accent)">Settings</div>' +
+    '<div style="font-size:0.7rem;font-weight:700;margin-bottom:0.8rem;color:var(--accent)">设置</div>' +
     '<div class="settings-account-box">' +
-    '<div style="font-size:0.52rem;font-weight:700;color:var(--text)">Account: ' + accountName + '</div>' +
-    '<div style="font-size:0.36rem;color:var(--text);line-height:1.6;margin-top:0.08rem">Role: ' + roleText + '</div>' +
+    '<div style="font-size:0.52rem;font-weight:700;color:var(--text)">账号: ' + accountName + '</div>' +
+    '<div style="font-size:0.36rem;color:var(--text);line-height:1.6;margin-top:0.08rem">角色: ' + roleText + '</div>' +
     '<div style="font-size:0.36rem;color:var(--dim);line-height:1.6;margin-top:0.1rem">' + syncText + '</div>' +
     '<div style="display:flex;gap:0.25rem;justify-content:center;margin-top:0.25rem;flex-wrap:wrap">' +
-    '<button onclick="showAuthModal(\'login\')" style="padding:0.22rem 0.65rem;background:var(--c3);color:var(--text);border:none;border-radius:8px;font-size:0.38rem;cursor:pointer">Account Center</button>' +
-    (ONLINE.token ? '<button onclick="showRoleModal()" style="padding:0.22rem 0.65rem;background:var(--c3);color:var(--text);border:none;border-radius:8px;font-size:0.38rem;cursor:pointer">Switch Role</button>' : '') +
-    (ONLINE.token ? '<button onclick="logoutOnlineAccount();show(\'title\');renderTitle()" style="padding:0.22rem 0.65rem;background:var(--c2);border:1px solid var(--red);color:var(--red);border-radius:8px;font-size:0.38rem;cursor:pointer">Logout</button>' : '') +
+    '<button onclick="showAuthModal(\'login\')" style="padding:0.22rem 0.65rem;background:var(--c3);color:var(--text);border:none;border-radius:8px;font-size:0.38rem;cursor:pointer">账号中心</button>' +
+    (ONLINE.token ? '<button onclick="showRoleModal()" style="padding:0.22rem 0.65rem;background:var(--c3);color:var(--text);border:none;border-radius:8px;font-size:0.38rem;cursor:pointer">切换角色</button>' : '') +
+    (ONLINE.token ? '<button onclick="logoutOnlineAccount();show(\'title\');renderTitle()" style="padding:0.22rem 0.65rem;background:var(--c2);border:1px solid var(--red);color:var(--red);border-radius:8px;font-size:0.38rem;cursor:pointer">退出登录</button>' : '') +
     '</div>' +
     '</div>' +
-    '<div style="display:flex;flex-direction:column;gap:0.5rem;align-items:center">' +
-    '<button onclick="exportSave()" style="width:80%;padding:0.5rem;background:linear-gradient(135deg,#2dd4bf,#06b6d4);color:#fff;border:none;border-radius:12px;font-size:0.6rem;font-weight:700;cursor:pointer">Export Save</button>' +
-    '<button onclick="importSave()" style="width:80%;padding:0.5rem;background:linear-gradient(135deg,#a78bfa,#7c3aed);color:#fff;border:none;border-radius:12px;font-size:0.6rem;font-weight:700;cursor:pointer">Import Save</button>' +
-    '<div style="font-size:0.38rem;color:var(--dim);line-height:1.5">Export copies a compressed save code.<br>Import restores from a save code.<br>Save size: ' + (saveSize / 1024).toFixed(1) + ' KB</div>' +
-    '</div>' +
-    '<div style="margin-top:1.2rem;border-top:1px solid var(--border);padding-top:0.6rem">' +
-    '<button onclick="confirmResetAll()" style="padding:0.3rem 1rem;background:var(--c2);border:1px solid var(--red);color:var(--red);border-radius:8px;font-size:0.42rem;cursor:pointer">Reset Game</button>' +
+    '<div style="font-size:0.38rem;color:var(--dim);line-height:1.7;margin-top:0.6rem">云存档由当前在线角色管理，设置页中的手动导入、导出和重置功能已移除。</div>' +
+    '<div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:0.6rem;font-size:0.36rem;color:var(--dim);line-height:1.6">' +
+    '当前账号与角色数据会在游戏过程中自动同步。' +
     '</div>' +
     '</div>';
 }

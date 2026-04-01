@@ -1,4 +1,4 @@
-const crypto = require("crypto");
+﻿const crypto = require("crypto");
 const path = require("path");
 
 const bcrypt = require("bcryptjs");
@@ -9,7 +9,6 @@ const mysql = require("mysql2/promise");
 dotenv.config();
 
 const PORT = Number(process.env.PORT || 4000);
-const ALLOWED_CLASSES = new Set(["剑士", "法师", "游侠", "圣职者"]);
 const PERMANENT_SESSION_EXPIRES_AT = new Date("2099-12-31T23:59:59.000Z");
 
 const pool = mysql.createPool({
@@ -200,14 +199,41 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
   res.json(await buildProfile(req.user));
 });
 
+app.get("/api/leaderboard", authRequired, async (req, res) => {
+  const serverId = Number(req.query.serverId || 0);
+  const params = {};
+  let whereSql = "";
+
+  if (serverId) {
+    whereSql = "WHERE r.server_id = :serverId";
+    params.serverId = serverId;
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT r.id, r.role_name AS roleName, r.class_name AS className, r.level, r.gold, r.diamond,
+            r.power_score AS powerScore, r.last_login_at AS lastLoginAt,
+            s.id AS serverId, s.server_name AS serverName, s.server_code AS serverCode,
+            u.account_name AS accountName
+     FROM game_roles r
+     INNER JOIN game_servers s ON s.id = r.server_id
+     INNER JOIN users u ON u.id = r.user_id
+     ${whereSql}
+     ORDER BY r.power_score DESC, r.level DESC, r.updated_at ASC
+     LIMIT 50`,
+    params
+  );
+
+  res.json({
+    serverId: serverId || null,
+    rankings: rows
+  });
+});
+
 app.post("/api/roles", authRequired, async (req, res) => {
   const serverId = Number(req.body.serverId || 0);
   const roleName = String(req.body.roleName || "").trim();
-  const className = String(req.body.className || "").trim();
-
   if (!serverId) return res.status(400).json({ message: "SERVER_REQUIRED" });
   if (!isValidRoleName(roleName)) return res.status(400).json({ message: "ROLE_NAME_INVALID" });
-  if (!ALLOWED_CLASSES.has(className)) return res.status(400).json({ message: "CLASS_INVALID" });
 
   const [serverRows] = await pool.execute(
     "SELECT id, status FROM game_servers WHERE id = :serverId LIMIT 1",
@@ -232,7 +258,7 @@ app.post("/api/roles", authRequired, async (req, res) => {
   const [insertResult] = await pool.execute(
     `INSERT INTO game_roles (user_id, server_id, role_name, class_name)
      VALUES (:userId, :serverId, :roleName, :className)`,
-    { userId: req.user.id, serverId, roleName, className }
+    { userId: req.user.id, serverId, roleName, className: "" }
   );
 
   await pool.execute(
