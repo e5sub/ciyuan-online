@@ -1927,6 +1927,8 @@ var ONLINE = {
   leaderboard: null,
   leaderboardServerId: 0,
   leaderboardLoading: false,
+  arenaOpponents: null,
+  arenaOpponentsLoading: false,
   loading: false,
   saveTimer: null,
   saveInFlight: false,
@@ -1968,7 +1970,7 @@ function translateMessage(message) {
     SESSION_NOT_FOUND: '登录会话不存在',
     SESSION_EXPIRED: '登录会话已过期',
     ACCOUNT_DISABLED: '账号不可用',
-    ACCOUNT_NAME_INVALID: '账号格式不正确',
+    ACCOUNT_NAME_INVALID: '玩家名只能使用中文、字母或数字，长度为2到24位',
     PASSWORD_INVALID: '密码格式不正确',
     ACCOUNT_EXISTS: '账号已存在',
     REGISTER_OK: '注册成功',
@@ -2011,6 +2013,21 @@ async function loadLeaderboard(serverId) {
   }
 }
 
+async function loadArenaOpponents(force) {
+  if (!ONLINE.token || !ONLINE.selectedRoleId) return [];
+  if (!force && ONLINE.arenaOpponents && ONLINE.arenaOpponents.length) return ONLINE.arenaOpponents;
+  ONLINE.arenaOpponentsLoading = true;
+  try {
+    var data = await onlineApi('/api/arena/opponents?limit=3');
+    ONLINE.arenaOpponents = data.opponents || [];
+  } catch (e) {
+    ONLINE.arenaOpponents = [];
+  } finally {
+    ONLINE.arenaOpponentsLoading = false;
+  }
+  return ONLINE.arenaOpponents;
+}
+
 async function onlineApi(path, options) {
   options = options || {};
   var headers = {'Content-Type':'application/json'};
@@ -2034,6 +2051,7 @@ async function fetchOnlineProfile() {
   try {
     ONLINE.profile = await onlineApi('/api/auth/me');
     ONLINE.leaderboard = null;
+    ONLINE.arenaOpponents = null;
     if (ONLINE.selectedRoleId) {
       var role = getSelectedRole();
       if (!role) {
@@ -2047,6 +2065,7 @@ async function fetchOnlineProfile() {
     ONLINE.profile = null;
     ONLINE.selectedRoleId = 0;
     ONLINE.leaderboard = null;
+    ONLINE.arenaOpponents = null;
     try { localStorage.removeItem('dcg_token'); } catch(err) {}
     try { localStorage.removeItem('dcg_role_id'); } catch(err) {}
     return null;
@@ -2113,7 +2132,7 @@ function showAuthModal(defaultTab) {
       '<button class="auth-tab" data-tab="register" onclick="switchAuthTab(\'register\')">注册</button>' +
     '</div>' +
     '<div class="auth-pane active" data-pane="login">' +
-      '<div class="auth-field"><label>账号</label><input id="auth-login-account" maxlength="32" placeholder="6-32位字母、数字或下划线"></div>' +
+      '<div class="auth-field"><label>玩家名</label><input id="auth-login-account" maxlength="24" placeholder="2-24位中文、字母或数字"></div>' +
       '<div class="auth-field"><label>密码</label><input id="auth-login-password" type="password" maxlength="72" placeholder="输入密码"></div>' +
       '<div class="auth-msg"></div>' +
       '<div class="auth-actions">' +
@@ -2122,7 +2141,7 @@ function showAuthModal(defaultTab) {
       '</div>' +
     '</div>' +
     '<div class="auth-pane" data-pane="register">' +
-      '<div class="auth-field"><label>账号</label><input id="auth-register-account" maxlength="32" placeholder="6-32位字母、数字或下划线"></div>' +
+      '<div class="auth-field"><label>玩家名</label><input id="auth-register-account" maxlength="24" placeholder="2-24位中文、字母或数字"></div>' +
       '<div class="auth-field"><label>密码</label><input id="auth-register-password" type="password" maxlength="72" placeholder="至少6位"></div>' +
       '<div class="auth-field"><label>确认密码</label><input id="auth-register-confirm" type="password" maxlength="72" placeholder="再次输入密码"></div>' +
       '<div class="auth-msg"></div>' +
@@ -2180,6 +2199,7 @@ async function logoutOnlineAccount() {
   ONLINE.profile = null;
   ONLINE.selectedRoleId = 0;
   ONLINE.leaderboard = null;
+  ONLINE.arenaOpponents = null;
   try { localStorage.removeItem('dcg_token'); } catch(err) {}
   try { localStorage.removeItem('dcg_role_id'); } catch(err) {}
   updateTitleAuthStatus();
@@ -2188,6 +2208,7 @@ async function logoutOnlineAccount() {
 
 function selectRole(roleId) {
   ONLINE.selectedRoleId = Number(roleId || 0);
+  ONLINE.arenaOpponents = null;
   try { localStorage.setItem('dcg_role_id', String(ONLINE.selectedRoleId)); } catch(e) {}
   updateTitleAuthStatus();
   renderRoleModal();
@@ -2802,7 +2823,7 @@ function renderHub(tab) {
     { key: 'gacha', label: '召唤' },
     { key: 'team', label: '阵容' },
     { key: 'battle', label: '关卡' },
-    { key: 'arena', label: '竞技场' },
+    { key: 'arena', label: '竞技' },
     { key: 'boss', label: 'BOSS' },
     { key: 'leaderboard', label: '排行' },
     { key: 'synergy', label: '羁绊' },
@@ -4569,7 +4590,7 @@ function renderBattleField() {
   el.innerHTML = `
     <div class="b-hdr">
       <button class="b-back" onclick="exitBattle()" style="background:none;border:1px solid rgba(255,255,255,0.2);color:var(--text);padding:2px 10px;border-radius:6px;font-size:0.5rem;cursor:pointer;">返回</button>
-      <span class="b-stage">${G._fromBoss ? '【BOSS挑战】' : G._fromArena ? '【竞技场】' : stageLabel()} <span id="b-turn" style="color:#ffd700;font-size:0.5rem">回合 ${B.turn}</span></span>
+      <span class="b-stage">${G._fromBoss ? '【BOSS挑战】' : G._fromArena ? '【竞技】' : stageLabel()} <span id="b-turn" style="color:#ffd700;font-size:0.5rem">回合 ${B.turn}</span></span>
       <button class="b-spd" onclick="toggleSpeed()">×${B.speed}</button>
     </div>
     ${G._fromBoss ? `<div class="boss-hp-wrap"><div class="boss-hp-outer"><div class="boss-hp-fill" id="boss-hp-fill" style="width:100%"></div><div class="boss-hp-txt" id="boss-hp-txt">${B.et[0]?B.et[0].hp.toLocaleString():0} / ${B._bossMaxHp?B._bossMaxHp.toLocaleString():0}</div></div></div><div style="display:flex;justify-content:space-between;padding:0 8px"><div class="boss-dmg-total" id="boss-dmg-total">总伤害: 0</div><div id="boss-timer" style="font-size:0.48rem;color:#ff6b6b;font-weight:700">⏱ 10:00</div></div>` : ''}
@@ -6035,8 +6056,125 @@ function generateArenaOpponent() {
   return { preset: null, team: team };
 }
 
+function getCodexBonusFromState(state) {
+  var roster = (state && state.roster) ? state.roster : {};
+  var ownedCount = 0;
+  var totalStars = 0;
+  var rarityCount = {SR:0, SS:0, SSR:0};
+  for (var id in roster) {
+    ownedCount++;
+    var star = roster[id] && roster[id].star ? roster[id].star : 0;
+    totalStars += star;
+    var ch = CHARS.find(function(c){ return c.id === id; });
+    if (ch && rarityCount[ch.rarity] !== undefined) rarityCount[ch.rarity]++;
+  }
+  var pct = ownedCount * 0.003 + totalStars * 0.0005 + rarityCount.SS * 0.0015 + rarityCount.SSR * 0.0035;
+  pct = Math.min(pct, 0.5);
+  return { pct: pct };
+}
+
+function getCharStatsFromState(state, charId) {
+  var c = CHARS.find(function(ch) { return ch.id === charId; });
+  var roster = state && state.roster ? state.roster : {};
+  var r = roster[charId];
+  if (!c || !r) return null;
+  var teamLv = Number(state.teamLv || 1);
+  var rebirth = Number(state.rebirth || 0);
+  var lvMult = 1 + (teamLv - 1) * 0.06;
+  var sMult = starStatMult(r.star || 0);
+  var rebirthMult = 1 + rebirth * 0.3;
+  var codexMult = 1 + getCodexBonusFromState(state).pct;
+  var eb = {atk:0, def:0, hp:0, spd:0};
+  var equip = r.equip || {};
+  for (var i = 0; i < EQUIP_TYPES.length; i++) {
+    var eq = EQUIP_TYPES[i];
+    var b = equipBonus(eq.id, Number(equip[eq.id] || 0), Number(r.equipBreak || 0));
+    for (var k in b) eb[k] += b[k];
+  }
+  var jobBonus = {hp:0, atk:0, def:0, spd:0};
+  var job = c.job || '输出';
+  var baseHp = c.hp * HP_SCALE * lvMult * sMult * rebirthMult;
+  var baseAtk = c.atk * lvMult * sMult * rebirthMult;
+  var baseDef = c.def * lvMult * sMult * rebirthMult;
+  var baseSpd = c.spd * lvMult * sMult * rebirthMult;
+  if (job === '坦克') { jobBonus.hp = baseHp * 0.15; jobBonus.def = baseDef * 0.20; }
+  else if (job === '战士') { jobBonus.atk = baseAtk * 0.15; jobBonus.spd = baseSpd * 0.10; }
+  else if (job === '法师') { jobBonus.atk = baseAtk * 0.15; }
+  else if (job === '刺客') { jobBonus.atk = baseAtk * 0.10; jobBonus.spd = baseSpd * 0.15; }
+  else if (job === '辅助') { jobBonus.hp = baseHp * 0.10; jobBonus.atk = baseAtk * 0.10; jobBonus.def = baseDef * 0.10; jobBonus.spd = baseSpd * 0.10; }
+  return {
+    hp: Math.floor((baseHp + eb.hp + jobBonus.hp) * codexMult),
+    atk: Math.floor((baseAtk + eb.atk + jobBonus.atk) * codexMult),
+    def: Math.floor((baseDef + eb.def + jobBonus.def) * codexMult),
+    spd: Math.floor((baseSpd + eb.spd + jobBonus.spd) * codexMult)
+  };
+}
+
+function buildArenaStateFromPlayer(opponent) {
+  var roster = {};
+  var sourceRoster = opponent && opponent.roster ? opponent.roster : {};
+  for (var id in sourceRoster) {
+    var src = sourceRoster[id] || {};
+    roster[id] = {
+      star: Number(src.star || 0),
+      frags: Number(src.frags || 0),
+      equip: {
+        weapon: Number(src.equip && src.equip.weapon || 0),
+        armor: Number(src.equip && src.equip.armor || 0),
+        accessory: Number(src.equip && src.equip.accessory || 0)
+      },
+      equipBreak: Number(src.equipBreak || 0)
+    };
+  }
+  return {
+    roster: roster,
+    formation: Array.isArray(opponent && opponent.formation) ? opponent.formation.filter(Boolean).slice(0, 6) : [],
+    teamLv: Number(opponent && opponent.teamLv || 1),
+    rebirth: Number(opponent && opponent.rebirth || 0)
+  };
+}
+
+function buildArenaUnitsFromPlayer(opponent) {
+  var state = buildArenaStateFromPlayer(opponent);
+  var formation = state.formation.filter(function(id) { return state.roster[id]; });
+  return formation.map(function(charId, i) {
+    var c = CHARS.find(function(ch) { return ch.id === charId; });
+    var stats = getCharStatsFromState(state, charId);
+    if (!c || !stats) return null;
+    var star = Number(state.roster[charId].star || 0);
+    var job = c.job || '输出';
+    return {
+      id: c.id + '_p' + i,
+      name: c.name,
+      elem: c.elem,
+      rarity: c.rarity,
+      img: c.img,
+      side: 'foe',
+      job: job,
+      maxHp: stats.hp,
+      hp: stats.hp,
+      atk: stats.atk,
+      def: stats.def,
+      spd: stats.spd,
+      skill: c.skill,
+      ult: star >= 7 ? c.awakenSkill : c.ult,
+      rage: 0,
+      alive: true,
+      buffs: [],
+      debuffs: [],
+      shield: 0,
+      taunt: 0,
+      counter: false,
+      row: i < 3 ? 'front' : 'back'
+    };
+  }).filter(Boolean);
+}
+
 function renderArenaTab() {
   initArenaSeason();
+  if (ONLINE.token && ONLINE.selectedRoleId && !ONLINE.arenaOpponents && !ONLINE.arenaOpponentsLoading) {
+    setTimeout(function() { loadArenaOpponents(); }, 0);
+  }
   const a = G.arena;
   const now = Date.now();
   const timeLeft = Math.max(0, a.seasonEnd - now);
@@ -6092,6 +6230,30 @@ function renderArenaTab() {
     '</div>';
   }).join('');
 
+  var opponentHTML = '';
+  if (ONLINE.token && ONLINE.selectedRoleId) {
+    if (ONLINE.arenaOpponentsLoading) {
+      opponentHTML = '<div style="font-size:0.4rem;color:var(--dim);text-align:center;padding:0.35rem 0">正在刷新玩家对手...</div>';
+    } else if (ONLINE.arenaOpponents && ONLINE.arenaOpponents.length) {
+      opponentHTML = ONLINE.arenaOpponents.map(function(opp) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:0.3rem;background:var(--c2);border:1px solid var(--border);border-radius:10px;padding:0.32rem;margin-bottom:0.22rem">' +
+          '<div style="min-width:0;flex:1">' +
+            '<div style="font-size:0.5rem;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + opp.roleName + '</div>' +
+            '<div style="font-size:0.35rem;color:var(--dim)">' + opp.serverName + ' · 队伍Lv.' + opp.teamLv + (opp.rebirth ? (' · ' + opp.rebirth + '转') : '') + '</div>' +
+          '</div>' +
+          '<div style="text-align:right;flex-shrink:0">' +
+            '<div style="font-size:0.45rem;font-weight:900;color:var(--accent)">' + Number(opp.powerScore || 0).toLocaleString() + '</div>' +
+            '<button class="tr-btn" style="margin-top:4px" onclick="startArenaBattle(' + opp.id + ')">挑战</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    } else {
+      opponentHTML = '<div style="font-size:0.4rem;color:var(--dim);text-align:center;padding:0.35rem 0">暂时没有可匹配玩家，挑战时会回退到默认对手。</div>';
+    }
+  } else {
+    opponentHTML = '<div style="font-size:0.4rem;color:var(--dim);text-align:center;padding:0.35rem 0">登录并进入角色后，可挑战其他玩家阵容。</div>';
+  }
+
   var html = '<div style="padding:0.3rem">' +
     '<div style="text-align:center;margin-bottom:0.5rem">' +
       '<div style="font-size:2rem">'+tierIcons[tier.name]+'</div>' +
@@ -6136,6 +6298,11 @@ function renderArenaTab() {
       '<div style="margin-top:6px"><button class="auto-next-btn '+(G.arenaAutoNext?'active':'')+'" onclick="G.arenaAutoNext=!G.arenaAutoNext;saveGame();renderHub(\'arena\')" style="font-size:0.45rem;padding:0.2rem 0.7rem">' + (G.arenaAutoNext ? '\uD83D\uDD04 \u81EA\u52A8\u4E0B\u4E00\u573A: \u5F00' : '\u23F8 \u81EA\u52A8\u4E0B\u4E00\u573A: \u5173') + '</button></div>' +
     '</div>' +
     '<div style="background:var(--c1);border:1px solid var(--border);border-radius:10px;padding:0.5rem;margin-bottom:0.4rem">' +
+      '<div style="font-size:0.6rem;font-weight:900;color:var(--gold);margin-bottom:0.25rem">玩家对手</div>' +
+      '<div style="font-size:0.38rem;color:var(--dim);margin-bottom:0.25rem">优先按区服和战力接近度匹配在线角色存档。</div>' +
+      opponentHTML +
+    '</div>' +
+    '<div style="background:var(--c1);border:1px solid var(--border);border-radius:10px;padding:0.5rem;margin-bottom:0.4rem">' +
       '<div style="font-size:0.6rem;font-weight:900;color:var(--gold);margin-bottom:0.3rem">\uD83C\uDF81 \u6BCF\u65E5\u91CC\u7A0B\u7891\u5956\u52B1</div>' +
       '<div style="font-size:0.38rem;color:var(--dim);margin-bottom:0.2rem">\u8FBE\u5230\u5BF9\u6218\u6B21\u6570\u53EF\u9886\u53D6\u5956\u52B1</div>' +
       milestonesHTML +
@@ -6163,7 +6330,7 @@ function claimArenaMilestone(index) {
   renderHub('arena');
 }
 
-function startArenaBattle() {
+async function startArenaBattle(targetRoleId) {
   const formChars = G.formation.filter(Boolean);
   if (!formChars.length) { gameToast('提示', '请先在阵容页面编入角色！'); return; }
 
@@ -6180,13 +6347,36 @@ function startArenaBattle() {
     gameToast('提示', '今日对战次数已用完(50/50)');
     return;
   }
-  G.arena.dailyBattles++;
-  saveGame();
 
   G._fromArena = true;
   const tier = getCurrentTier();
-  const oppResult = generateArenaOpponent();
-  const oppTeam = oppResult.team;
+  var matchedPlayer = null;
+  if (ONLINE.token && ONLINE.selectedRoleId) {
+    var opponents = ONLINE.arenaOpponents;
+    if (!opponents || !opponents.length || targetRoleId) {
+      opponents = await loadArenaOpponents(!!targetRoleId);
+    }
+    if (opponents && opponents.length) {
+      if (targetRoleId) {
+        for (var oi = 0; oi < opponents.length; oi++) {
+          if (Number(opponents[oi].id) === Number(targetRoleId)) {
+            matchedPlayer = opponents[oi];
+            break;
+          }
+        }
+      }
+      if (!matchedPlayer) {
+        matchedPlayer = opponents[Math.floor(Math.random() * opponents.length)];
+      }
+    }
+  }
+
+  var oppResult = matchedPlayer ? { preset: null, team: [] } : generateArenaOpponent();
+  var oppTeam = oppResult.team;
+  var enemyCharIds = [];
+
+  G.arena.dailyBattles++;
+  saveGame();
 
   B = { pt:[], et:[], done:false, turn:0, activeSyn:[], enemySyn:[], _actingUnit:null, _timer:null, speed: G.battleSpeed || 1, paused:false, stats:{} };
 
@@ -6208,32 +6398,39 @@ function startArenaBattle() {
     return u;
   }).filter(Boolean);
 
-  B.et = oppTeam.map(function(t, i) {
-    var c = CHARS.find(function(ch) { return ch.id === t.id; });
-    if (!c) return null;
-    var starMult = 1 + (t.star || 0) * 0.5;
-    var lvMult = 1 + (G.teamLv - 1) * 0.06;
-    var equipBon = (t.equipLv || 0) * 0.03;
-    var sc = tier.mult * lvMult * starMult * (1 + equipBon);
-    var job = c.job || '输出';
-    return {
-      id: c.id + '_a' + i, name: c.name, elem: c.elem, rarity: c.rarity,
-      img: c.img, side: 'foe', job: job,
-      maxHp: Math.floor(c.hp * HP_SCALE * sc), hp: Math.floor(c.hp * HP_SCALE * sc),
-      atk: Math.floor(c.atk * sc), def: Math.floor(c.def * sc),
-      spd: Math.floor(c.spd * sc),
-      skill: c.skill, ult: (t.star >= 7) ? c.awakenSkill : c.ult,
-      rage: 0, alive: true, buffs: [], debuffs: [], shield: 0,
-      taunt: 0, counter: false,
-      row: i < 3 ? 'front' : 'back'
-    };
-  }).filter(Boolean);
+  if (matchedPlayer) {
+    B.et = buildArenaUnitsFromPlayer(matchedPlayer);
+    enemyCharIds = buildArenaStateFromPlayer(matchedPlayer).formation.filter(Boolean);
+    G._arenaOpp = { type: 'player', roleName: matchedPlayer.roleName, serverName: matchedPlayer.serverName };
+  } else {
+    B.et = oppTeam.map(function(t, i) {
+      var c = CHARS.find(function(ch) { return ch.id === t.id; });
+      if (!c) return null;
+      var starMult = 1 + (t.star || 0) * 0.5;
+      var lvMult = 1 + (G.teamLv - 1) * 0.06;
+      var equipBon = (t.equipLv || 0) * 0.03;
+      var sc = tier.mult * lvMult * starMult * (1 + equipBon);
+      var job = c.job || '输出';
+      return {
+        id: c.id + '_a' + i, name: c.name, elem: c.elem, rarity: c.rarity,
+        img: c.img, side: 'foe', job: job,
+        maxHp: Math.floor(c.hp * HP_SCALE * sc), hp: Math.floor(c.hp * HP_SCALE * sc),
+        atk: Math.floor(c.atk * sc), def: Math.floor(c.def * sc),
+        spd: Math.floor(c.spd * sc),
+        skill: c.skill, ult: (t.star >= 7) ? c.awakenSkill : c.ult,
+        rage: 0, alive: true, buffs: [], debuffs: [], shield: 0,
+        taunt: 0, counter: false,
+        row: i < 3 ? 'front' : 'back'
+      };
+    }).filter(Boolean);
+    enemyCharIds = oppTeam.map(function(t) { return t.id; });
+    delete G._arenaOpp;
+  }
 
   B.activeSyn = applySynergies(B.pt);
 
   // Apply synergies to enemy team too
   // Show enemy synergies (display only, no stat bonus)
-  var enemyCharIds = oppTeam.map(function(t) { return t.id; });
   var enemySynList = calcSynergies(enemyCharIds);
   if (enemySynList.length) {
     B.enemySyn = enemySynList.map(function(s) { return s.name; });

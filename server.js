@@ -32,7 +32,7 @@ function createToken() {
 }
 
 function isValidAccountName(accountName) {
-  return /^[A-Za-z0-9_]{6,32}$/.test(accountName);
+  return /^[\u4e00-\u9fa5A-Za-z0-9]{2,24}$/.test(accountName);
 }
 
 function isValidRoleName(name) {
@@ -74,6 +74,21 @@ async function buildProfile(user) {
     listRolesByUserId(user.id)
   ]);
   return { user, servers, roles };
+}
+
+function normalizeArenaSave(saveData) {
+  if (!saveData || typeof saveData !== "object" || Array.isArray(saveData)) return null;
+  const formation = Array.isArray(saveData.formation)
+    ? saveData.formation.filter((id) => typeof id === "string" && id).slice(0, 6)
+    : [];
+  const roster = saveData.roster && typeof saveData.roster === "object" ? saveData.roster : {};
+  if (!formation.length || !Object.keys(roster).length) return null;
+  return {
+    formation,
+    roster,
+    teamLv: Math.max(1, Number(saveData.teamLv || 1)),
+    rebirth: Math.max(0, Number(saveData.rebirth || 0))
+  };
 }
 
 async function authRequired(req, res, next) {
@@ -227,6 +242,64 @@ app.get("/api/leaderboard", authRequired, async (req, res) => {
     serverId: serverId || null,
     rankings: rows
   });
+});
+
+app.get("/api/arena/opponents", authRequired, roleRequired, async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit || 3), 1), 12);
+  const [rows] = await pool.execute(
+    `SELECT r.id, r.role_name AS roleName, r.level, r.gold, r.diamond,
+            r.power_score AS powerScore, r.last_login_at AS lastLoginAt,
+            s.id AS serverId, s.server_name AS serverName, s.server_code AS serverCode,
+            u.account_name AS accountName,
+            rs.save_data AS saveData,
+            CASE WHEN r.server_id = :serverId THEN 0 ELSE 1 END AS serverPriority,
+            ABS(r.power_score - :powerScore) AS powerGap
+     FROM game_roles r
+     INNER JOIN users u ON u.id = r.user_id
+     INNER JOIN game_servers s ON s.id = r.server_id
+     INNER JOIN role_game_saves rs ON rs.role_id = r.id
+     WHERE r.id <> :roleId
+       AND r.user_id <> :userId
+       AND u.status = 'active'
+     ORDER BY serverPriority ASC, powerGap ASC, r.power_score DESC, r.last_login_at DESC
+     LIMIT 36`,
+    {
+      roleId: req.role.id,
+      userId: req.user.id,
+      serverId: req.role.serverId,
+      powerScore: Number(req.role.powerScore || 0)
+    }
+  );
+
+  const opponents = [];
+  for (const row of rows) {
+    let parsed = null;
+    try {
+      parsed = JSON.parse(row.saveData);
+    } catch (error) {
+      parsed = null;
+    }
+    const arenaSave = normalizeArenaSave(parsed);
+    if (!arenaSave) continue;
+    opponents.push({
+      id: row.id,
+      roleName: row.roleName,
+      accountName: row.accountName,
+      serverId: row.serverId,
+      serverName: row.serverName,
+      serverCode: row.serverCode,
+      level: row.level,
+      powerScore: row.powerScore,
+      lastLoginAt: row.lastLoginAt,
+      teamLv: arenaSave.teamLv,
+      rebirth: arenaSave.rebirth,
+      formation: arenaSave.formation,
+      roster: arenaSave.roster
+    });
+    if (opponents.length >= limit) break;
+  }
+
+  res.json({ opponents });
 });
 
 app.post("/api/roles", authRequired, async (req, res) => {
