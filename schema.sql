@@ -38,9 +38,13 @@ CREATE TABLE IF NOT EXISTS game_roles (
   gold INT NOT NULL DEFAULT 1000,
   diamond INT NOT NULL DEFAULT 100,
   power_score INT NOT NULL DEFAULT 120,
+  stage_progress INT NOT NULL DEFAULT 1,
+  arena_points INT NOT NULL DEFAULT 0,
   last_login_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_game_roles_stage_progress (stage_progress DESC),
+  INDEX idx_game_roles_arena_points (arena_points DESC),
   CONSTRAINT fk_game_roles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_game_roles_server FOREIGN KEY (server_id) REFERENCES game_servers(id) ON DELETE CASCADE,
   CONSTRAINT uk_game_roles_server_name UNIQUE (server_id, role_name)

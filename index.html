@@ -258,7 +258,7 @@ img { display: block; }
 
 .tr-btns { display: flex; gap: 0.25rem; margin-top: 2px; flex-wrap: wrap; }
 
-.tr-btn { padding: 0.2rem 0.4rem; border-radius: 5px; font-size: 0.5rem; font-weight: 700; color: rgb(255, 255, 255); }
+.tr-btn { padding: 0.2rem 0.4rem; border-radius: 5px; font-size: 0.5rem; font-weight: 700; color: rgb(255, 255, 255); background: var(--c3); border: 1px solid var(--border); }
 
 .tr-btn.lv { background: linear-gradient(135deg, rgb(59, 130, 246), rgb(37, 99, 235)); }
 
@@ -1926,6 +1926,7 @@ var ONLINE = {
   selectedRoleId: 0,
   leaderboard: null,
   leaderboardServerId: 0,
+  leaderboardType: 'power',
   leaderboardLoading: false,
   arenaOpponents: null,
   arenaOpponentsLoading: false,
@@ -1994,14 +1995,19 @@ function translateMessage(message) {
   return map[message] || message || '请求失败';
 }
 
-async function loadLeaderboard(serverId) {
+async function loadLeaderboard(serverId, type) {
   if (!ONLINE.token) return;
   ONLINE.leaderboardLoading = true;
   ONLINE.leaderboardServerId = Number(serverId || 0);
+  ONLINE.leaderboardType = type || ONLINE.leaderboardType || 'power';
   try {
-    var qs = ONLINE.leaderboardServerId ? ('?serverId=' + ONLINE.leaderboardServerId) : '';
+    var params = [];
+    if (ONLINE.leaderboardServerId) params.push('serverId=' + ONLINE.leaderboardServerId);
+    if (ONLINE.leaderboardType) params.push('type=' + encodeURIComponent(ONLINE.leaderboardType));
+    var qs = params.length ? ('?' + params.join('&')) : '';
     var data = await onlineApi('/api/leaderboard' + qs);
     ONLINE.leaderboard = data.rankings || [];
+    ONLINE.leaderboardType = data.type || ONLINE.leaderboardType;
     if (document.getElementById('hub') && document.querySelector('.hub-tab.active')) {
       var active = document.querySelector('.hub-tab.active');
       if (active && active.textContent.indexOf('排行') >= 0) renderHub('leaderboard');
@@ -2254,10 +2260,25 @@ function renderRoleModal() {
 
 function renderLeaderboardTab() {
   var servers = (ONLINE.profile && ONLINE.profile.servers) ? ONLINE.profile.servers : [];
-  var filterHtml = '<button onclick="loadLeaderboard(0)" style="padding:0.18rem 0.5rem;border:none;border-radius:8px;background:' + (ONLINE.leaderboardServerId ? 'var(--c2)' : 'linear-gradient(135deg,var(--accent),#e85d04)') + ';color:#fff;font-size:0.38rem;cursor:pointer">全服</button>';
+  var currentType = ONLINE.leaderboardType || 'power';
+  var typeMeta = {
+    power: { label: '战力排行', valueLabel: '战力', valueKey: 'powerScore' },
+    stage: { label: '关卡排行', valueLabel: '关卡', valueKey: 'stage' },
+    arena: { label: '竞技排行', valueLabel: '积分', valueKey: 'arenaPoints' }
+  };
+  var currentMeta = typeMeta[currentType] || typeMeta.power;
+
+  var typeHtml = '';
+  ['power', 'stage', 'arena'].forEach(function(typeKey) {
+    var meta = typeMeta[typeKey];
+    var activeType = currentType === typeKey;
+    typeHtml += '<button onclick="loadLeaderboard(' + ONLINE.leaderboardServerId + ', \'' + typeKey + '\')" style="padding:0.18rem 0.5rem;border:none;border-radius:8px;background:' + (activeType ? 'linear-gradient(135deg,var(--accent),#e85d04)' : 'var(--c2)') + ';color:#fff;font-size:0.38rem;cursor:pointer">' + meta.label + '</button>';
+  });
+
+  var filterHtml = '<button onclick="loadLeaderboard(0, \'' + currentType + '\')" style="padding:0.18rem 0.5rem;border:none;border-radius:8px;background:' + (ONLINE.leaderboardServerId ? 'var(--c2)' : 'linear-gradient(135deg,var(--accent),#e85d04)') + ';color:#fff;font-size:0.38rem;cursor:pointer">全服</button>';
   for (var i = 0; i < servers.length; i++) {
     var s = servers[i];
-    filterHtml += '<button onclick="loadLeaderboard(' + s.id + ')" style="padding:0.18rem 0.5rem;border:none;border-radius:8px;background:' + (Number(ONLINE.leaderboardServerId) === Number(s.id) ? 'linear-gradient(135deg,var(--accent),#e85d04)' : 'var(--c2)') + ';color:#fff;font-size:0.38rem;cursor:pointer">' + s.serverName + '</button>';
+    filterHtml += '<button onclick="loadLeaderboard(' + s.id + ', \'' + currentType + '\')" style="padding:0.18rem 0.5rem;border:none;border-radius:8px;background:' + (Number(ONLINE.leaderboardServerId) === Number(s.id) ? 'linear-gradient(135deg,var(--accent),#e85d04)' : 'var(--c2)') + ';color:#fff;font-size:0.38rem;cursor:pointer">' + s.serverName + '</button>';
   }
 
   var rowsHtml = '';
@@ -2268,6 +2289,8 @@ function renderLeaderboardTab() {
   } else {
     for (var j = 0; j < ONLINE.leaderboard.length; j++) {
       var r = ONLINE.leaderboard[j];
+      var metricValue = Number(r[currentMeta.valueKey] || 0);
+      var metricText = currentType === 'stage' ? ('第 ' + metricValue + ' 关') : metricValue.toLocaleString();
       rowsHtml += '<div style="display:flex;align-items:center;gap:0.35rem;padding:0.32rem;border-bottom:1px solid var(--border)">' +
         '<div style="width:1.2rem;font-size:0.5rem;font-weight:900;color:' + (j < 3 ? 'var(--gold)' : 'var(--dim)') + '">#' + (j + 1) + '</div>' +
         '<div style="flex:1">' +
@@ -2275,8 +2298,8 @@ function renderLeaderboardTab() {
           '<div style="font-size:0.34rem;color:var(--dim)">' + r.serverName + ' | Lv.' + r.level + '</div>' +
         '</div>' +
         '<div style="text-align:right">' +
-          '<div style="font-size:0.46rem;font-weight:900;color:var(--accent)">' + Number(r.powerScore || 0).toLocaleString() + '</div>' +
-          '<div style="font-size:0.32rem;color:var(--dim)">战力</div>' +
+          '<div style="font-size:0.46rem;font-weight:900;color:var(--accent)">' + metricText + '</div>' +
+          '<div style="font-size:0.32rem;color:var(--dim)">' + currentMeta.valueLabel + '</div>' +
         '</div>' +
       '</div>';
     }
@@ -2284,6 +2307,7 @@ function renderLeaderboardTab() {
 
   return '<div style="padding:0.35rem">' +
     '<div style="font-size:0.65rem;font-weight:900;color:var(--gold);text-align:center;margin-bottom:0.35rem">排行榜</div>' +
+    '<div style="display:flex;gap:0.2rem;flex-wrap:wrap;justify-content:center;margin-bottom:0.28rem">' + typeHtml + '</div>' +
     '<div style="display:flex;gap:0.2rem;flex-wrap:wrap;justify-content:center;margin-bottom:0.35rem">' + filterHtml + '</div>' +
     '<div style="background:var(--c1);border:1px solid var(--border);border-radius:12px;overflow:hidden">' + rowsHtml + '</div>' +
   '</div>';
@@ -2842,7 +2866,7 @@ function renderHub(tab) {
     <div class="hub-body">${bodyHTML}</div>
   `;
   if (tab === 'leaderboard' && !ONLINE.leaderboardLoading && ONLINE.leaderboard === null) {
-    loadLeaderboard(ONLINE.leaderboardServerId || 0);
+    loadLeaderboard(ONLINE.leaderboardServerId || 0, ONLINE.leaderboardType || 'power');
   }
 }
 function renderTeamTab() {

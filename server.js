@@ -76,6 +76,52 @@ async function buildProfile(user) {
   return { user, servers, roles };
 }
 
+async function ensureColumnExists(tableName, columnName, definitionSql) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = :tableName
+       AND column_name = :columnName`,
+    { tableName, columnName }
+  );
+
+  if (Number(rows[0].total || 0) > 0) return;
+  await pool.execute(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definitionSql}`);
+}
+
+async function ensureIndexExists(tableName, indexName, definitionSql) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = :tableName
+       AND index_name = :indexName`,
+    { tableName, indexName }
+  );
+
+  if (Number(rows[0].total || 0) > 0) return;
+  await pool.execute(`ALTER TABLE ${tableName} ADD INDEX ${indexName} ${definitionSql}`);
+}
+
+async function ensureSchemaUpgrades() {
+  await ensureColumnExists("game_roles", "stage_progress", "INT NOT NULL DEFAULT 1 AFTER power_score");
+  await ensureColumnExists("game_roles", "arena_points", "INT NOT NULL DEFAULT 0 AFTER stage_progress");
+  await ensureIndexExists("game_roles", "idx_game_roles_stage_progress", "(stage_progress DESC)");
+  await ensureIndexExists("game_roles", "idx_game_roles_arena_points", "(arena_points DESC)");
+  await pool.execute(
+    `UPDATE game_roles r
+     LEFT JOIN role_game_saves rs ON rs.role_id = r.id
+     SET r.stage_progress = COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(rs.save_data, '$.stage')) AS UNSIGNED), 1),
+         r.arena_points = COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(rs.save_data, '$.arena.points')) AS UNSIGNED), 0)
+     WHERE rs.role_id IS NOT NULL
+       AND (
+         r.stage_progress <= 1
+         OR r.arena_points <=> 0
+       )`
+  );
+}
+
 function normalizeArenaSave(saveData) {
   if (!saveData || typeof saveData !== "object" || Array.isArray(saveData)) return null;
   const formation = Array.isArray(saveData.formation)
@@ -216,29 +262,48 @@ app.get("/api/auth/me", authRequired, async (req, res) => {
 
 app.get("/api/leaderboard", authRequired, async (req, res) => {
   const serverId = Number(req.query.serverId || 0);
+  const requestedType = String(req.query.type || "power").trim();
+  const leaderboardType = ["power", "stage", "arena"].includes(requestedType) ? requestedType : "power";
   const params = {};
   let whereSql = "";
+  let extraJoinSql = "";
+  let metricSql = "r.power_score";
+  let orderSql = "r.power_score DESC, r.level DESC, r.updated_at ASC";
+  let metricAlias = "powerScore";
 
   if (serverId) {
     whereSql = "WHERE r.server_id = :serverId";
     params.serverId = serverId;
   }
 
+  if (leaderboardType === "stage") {
+    metricSql = "r.stage_progress";
+    orderSql = "r.stage_progress DESC, r.power_score DESC, r.updated_at ASC";
+    metricAlias = "stage";
+  } else if (leaderboardType === "arena") {
+    metricSql = "r.arena_points";
+    orderSql = "r.arena_points DESC, r.power_score DESC, r.updated_at ASC";
+    metricAlias = "arenaPoints";
+  }
+
   const [rows] = await pool.execute(
     `SELECT r.id, r.role_name AS roleName, r.class_name AS className, r.level, r.gold, r.diamond,
             r.power_score AS powerScore, r.last_login_at AS lastLoginAt,
+            ${metricSql} AS ${metricAlias},
             s.id AS serverId, s.server_name AS serverName, s.server_code AS serverCode,
             u.account_name AS accountName
      FROM game_roles r
      INNER JOIN game_servers s ON s.id = r.server_id
      INNER JOIN users u ON u.id = r.user_id
+     ${extraJoinSql}
      ${whereSql}
-     ORDER BY r.power_score DESC, r.level DESC, r.updated_at ASC
+     ORDER BY ${orderSql}
      LIMIT 50`,
     params
   );
 
   res.json({
+    type: leaderboardType,
     serverId: serverId || null,
     rankings: rows
   });
@@ -402,6 +467,8 @@ app.put("/api/game/save", authRequired, roleRequired, async (req, res) => {
          gold = :gold,
          diamond = :diamond,
          power_score = :powerScore,
+         stage_progress = :stageProgress,
+         arena_points = :arenaPoints,
          last_login_at = CURRENT_TIMESTAMP
      WHERE id = :roleId`,
     {
@@ -409,7 +476,9 @@ app.put("/api/game/save", authRequired, roleRequired, async (req, res) => {
       level: Number(saveData.teamLv || 1),
       gold: Number(saveData.gold || 0),
       diamond: Number(saveData.gems || 0),
-      powerScore: Number(saveData.stage || 1) * 100 + Number(saveData.rebirth || 0) * 500
+      powerScore: Number(saveData.stage || 1) * 100 + Number(saveData.rebirth || 0) * 500,
+      stageProgress: Number(saveData.stage || 1),
+      arenaPoints: Number((((saveData || {}).arena || {}).points) || 0)
     }
   );
 
@@ -427,6 +496,13 @@ app.get("*", (req, res) => {
   res.sendFile(path.resolve(__dirname, "index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`次元乱斗Online 服务已启动: http://localhost:${PORT}`);
-});
+ensureSchemaUpgrades()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`次元乱斗Online 服务已启动: http://localhost:${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error("数据库结构升级失败:", error);
+    process.exit(1);
+  });
