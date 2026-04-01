@@ -1,5 +1,4 @@
-CREATE DATABASE IF NOT EXISTS ciyuan_online CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE ciyuan_online;
+-- Database creation is handled by server.js using DB_NAME from the environment.
 
 CREATE TABLE IF NOT EXISTS users (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,

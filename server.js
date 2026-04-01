@@ -1,5 +1,6 @@
 ﻿const crypto = require("crypto");
 const path = require("path");
+const fs = require("fs/promises");
 
 const bcrypt = require("bcryptjs");
 const dotenv = require("dotenv");
@@ -9,14 +10,19 @@ const mysql = require("mysql2/promise");
 dotenv.config();
 
 const PORT = Number(process.env.PORT || 4000);
+const DB_HOST = process.env.DB_HOST || "127.0.0.1";
+const DB_PORT = Number(process.env.DB_PORT || 3306);
+const DB_USER = process.env.DB_USER || "root";
+const DB_PASSWORD = process.env.DB_PASSWORD || "";
+const DB_NAME = process.env.DB_NAME || "dimension_brawl";
 const PERMANENT_SESSION_EXPIRES_AT = new Date("2099-12-31T23:59:59.000Z");
 
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || "127.0.0.1",
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "dimension_brawl",
+  host: DB_HOST,
+  port: DB_PORT,
+  user: DB_USER,
+  password: DB_PASSWORD,
+  database: DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
   namedPlaceholders: true
@@ -43,6 +49,37 @@ function readBearerToken(req) {
   const authHeader = req.headers.authorization || "";
   if (!authHeader.startsWith("Bearer ")) return "";
   return authHeader.slice(7).trim();
+}
+
+async function ensureDatabaseReady() {
+  const schemaPath = path.resolve(__dirname, "schema.sql");
+  const rawSchema = await fs.readFile(schemaPath, "utf8");
+  const bodySql = rawSchema
+    .split(/\r?\n/)
+    .filter((line) => {
+      const trimmed = line.trim().toUpperCase();
+      return !trimmed.startsWith("CREATE DATABASE ") && !trimmed.startsWith("USE ");
+    })
+    .join("\n")
+    .trim();
+
+  const connection = await mysql.createConnection({
+    host: DB_HOST,
+    port: DB_PORT,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    multipleStatements: true
+  });
+
+  try {
+    await connection.query(
+      `CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    );
+    await connection.query(`USE \`${DB_NAME}\``);
+    if (bodySql) await connection.query(bodySql);
+  } finally {
+    await connection.end();
+  }
 }
 
 async function listServers() {
@@ -496,13 +533,14 @@ app.get("*", (req, res) => {
   res.sendFile(path.resolve(__dirname, "index.html"));
 });
 
-ensureSchemaUpgrades()
+ensureDatabaseReady()
+  .then(() => ensureSchemaUpgrades())
   .then(() => {
     app.listen(PORT, () => {
       console.log(`次元乱斗Online 服务已启动: http://localhost:${PORT}`);
     });
   })
   .catch((error) => {
-    console.error("数据库结构升级失败:", error);
+    console.error("数据库初始化失败:", error);
     process.exit(1);
   });

@@ -5,9 +5,9 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
-      PORT: 4000
-      DB_HOST: 127.0.0.1
-      DB_PORT: 3306
-      DB_NAME: ciyuan
-      DB_USER: ciyuan
-      DB_PASSWORD: 123456
+      PORT: ${PORT:-4000}
+      DB_HOST: ${DB_HOST:-127.0.0.1}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-dimension_brawl}
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
