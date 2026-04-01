@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>次元Online - 纯网游版</title>
+  <style>
+    :root {
+      --bg: #08111f;
+      --panel: rgba(8, 18, 34, 0.9);
+      --line: rgba(158, 201, 255, 0.18);
+      --text: #ecf4ff;
+      --muted: #98aac7;
+      --brand: #7cf0ff;
+      --brand2: #3aa8ff;
+      --accent: #ffd36e;
+      --danger: #ff7b7b;
+      --ok: #69f0ae;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(58,168,255,.24), transparent 28%),
+        linear-gradient(135deg, #040814 0%, #09152a 45%, #051018 100%);
+    }
+    .wrap { width: min(1120px, calc(100% - 24px)); margin: 0 auto; padding: 24px 0 40px; }
+    .hero, .content { display: grid; gap: 20px; }
+    .hero { grid-template-columns: 1.1fr .9fr; }
+    .content { grid-template-columns: .95fr 1.05fr; margin-top: 20px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.35);
+      backdrop-filter: blur(14px);
+    }
+    .tag {
+      display: inline-block;
+      padding: 8px 14px;
+      border-radius: 999px;
+      color: var(--brand);
+      border: 1px solid rgba(124,240,255,.2);
+      background: rgba(124,240,255,.08);
+      font-size: 12px;
+      letter-spacing: .08em;
+      margin-bottom: 14px;
+    }
+    h1 { font-size: clamp(34px, 5vw, 60px); line-height: 1.05; margin-bottom: 14px; }
+    h2, h3 { margin-bottom: 14px; }
+    .hl { color: var(--accent); }
+    .lead, .muted, .hint, .meta, .footer-note { color: var(--muted); line-height: 1.8; }
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; }
+    .metric, .box, .char, .empty {
+      border-radius: 16px;
+      padding: 14px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.07);
+    }
+    .metric strong, .account strong { display: block; font-size: 22px; margin-top: 8px; }
+    .status { font-size: 12px; color: var(--accent); }
+    .tabs { display: flex; gap: 8px; background: rgba(255,255,255,.04); border-radius: 16px; padding: 6px; margin-bottom: 14px; }
+    .tab, .btn {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .tab { flex: 1; background: transparent; color: var(--muted); }
+    .tab.active { color: var(--text); background: linear-gradient(135deg, rgba(58,168,255,.24), rgba(124,240,255,.18)); }
+    .pane { display: none; }
+    .pane.active { display: block; }
+    form { display: grid; gap: 12px; }
+    .field { display: grid; gap: 8px; }
+    label { font-size: 13px; color: var(--muted); }
+    input, select {
+      width: 100%;
+      padding: 13px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      outline: none;
+    }
+    .btn {
+      background: linear-gradient(135deg, var(--brand), var(--brand2));
+      color: #051018;
+      box-shadow: 0 12px 30px rgba(58,168,255,.22);
+    }
+    .btn.secondary { background: rgba(255,255,255,.05); color: var(--text); box-shadow: none; border: 1px solid rgba(255,255,255,.08); }
+    .msg { min-height: 20px; font-size: 13px; line-height: 1.5; }
+    .msg.error { color: var(--danger); }
+    .msg.success { color: var(--ok); }
+    #dashboard { display: none; gap: 14px; }
+    #dashboard.active { display: grid; }
+    .account { padding: 16px; border-radius: 16px; border: 1px solid rgba(124,240,255,.16); background: linear-gradient(135deg, rgba(58,168,255,.16), rgba(124,240,255,.05)); }
+    .account-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    #characterList { display: grid; gap: 12px; }
+    @media (max-width: 900px) {
+      .hero, .content, .metrics { grid-template-columns: 1fr; }
+      .wrap { width: min(100% - 16px, 1120px); padding-top: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <article class="panel">
+        <div class="tag">MMORPG ACCOUNT GATEWAY</div>
+        <h1>次元Online<br><span class="hl">纯网游版本</span></h1>
+        <p class="lead">当前版本已改成在线账号模式。账号、会话和角色数据全部由后端 API 写入 MySQL，前端不再保存离线单机存档。</p>
+        <div class="metrics">
+          <div class="metric"><span class="muted">账号体系</span><strong>MySQL</strong></div>
+          <div class="metric"><span class="muted">认证方式</span><strong>Token Session</strong></div>
+          <div class="metric"><span class="muted">角色数据</span><strong>在线持久化</strong></div>
+        </div>
+      </article>
+      <aside class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+          <h2>账号中心</h2>
+          <div id="serverStatus" class="status">检测服务中</div>
+        </div>
+        <div class="tabs">
+          <button class="tab active" data-tab="login" type="button">登录</button>
+          <button class="tab" data-tab="register" type="button">注册</button>
+        </div>
+        <section class="pane active" data-pane="login">
+          <form id="loginForm">
+            <div class="field">
+              <label for="loginAccount">账号</label>
+              <input id="loginAccount" name="accountName" maxlength="32" required>
+            </div>
+            <div class="field">
+              <label for="loginPassword">密码</label>
+              <input id="loginPassword" name="password" type="password" minlength="6" maxlength="72" required>
+            </div>
+            <button class="btn" type="submit">进入服务器</button>
+          </form>
+          <div id="loginMessage" class="msg"></div>
+        </section>
+        <section class="pane" data-pane="register">
+          <form id="registerForm">
+            <div class="field">
+              <label for="registerAccount">游戏账号</label>
+              <input id="registerAccount" name="accountName" maxlength="32" required>
+            </div>
+            <div class="field">
+              <label for="registerPassword">登录密码</label>
+              <input id="registerPassword" name="password" type="password" minlength="6" maxlength="72" required>
+            </div>
+            <div class="field">
+              <label for="registerConfirm">确认密码</label>
+              <input id="registerConfirm" name="confirmPassword" type="password" minlength="6" maxlength="72" required>
+            </div>
+            <button class="btn" type="submit">创建游戏账号</button>
+          </form>
+          <p class="hint">注册成功后直接使用账号登录，再创建在线角色。</p>
+          <div id="registerMessage" class="msg"></div>
+        </section>
+      </aside>
+    </section>
+
+    <section class="content">
+      <article class="panel">
+        <h3>在线化说明</h3>
+        <div class="box"><strong>1. 账号</strong><p class="muted">账号写入 MySQL，密码采用哈希存储。</p></div>
+        <div class="box"><strong>2. 角色</strong><p class="muted">登录后可创建角色，等级、金币、钻石等基础数据全部落库。</p></div>
+        <div class="box"><strong>3. 会话</strong><p class="muted">登录成功后服务端签发 Token，后续请求按会话认证。</p></div>
+      </article>
+      <article class="panel">
+        <h3>玩家控制台</h3>
+        <div id="guestView" class="empty">尚未登录。请先注册或登录一个游戏账号。</div>
+        <div id="dashboard">
+          <div class="account">
+            <div class="account-row">
+              <div>
+                <strong id="accountNameValue">-</strong>
+                <div id="accountMeta" class="meta">-</div>
+              </div>
+              <button id="logoutButton" class="btn secondary" type="button">退出登录</button>
+            </div>
+          </div>
+          <div>
+            <h3>创建角色</h3>
+            <form id="characterForm">
+              <div class="field">
+                <label for="characterName">角色名</label>
+                <input id="characterName" name="name" maxlength="24" required>
+              </div>
+              <div class="field">
+                <label for="characterClass">职业</label>
+                <select id="characterClass" name="className" required>
+                  <option value="剑士">剑士</option>
+                  <option value="法师">法师</option>
+                  <option value="游侠">游侠</option>
+                  <option value="圣职者">圣职者</option>
+                </select>
+              </div>
+              <button class="btn" type="submit">创建在线角色</button>
+            </form>
+            <div id="characterMessage" class="msg"></div>
+          </div>
+          <div>
+            <h3>我的角色</h3>
+            <div id="characterList"></div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <p class="footer-note">默认接口为当前站点的 `/api/*`。如果状态显示离线，请检查 Node 服务和 MySQL 配置。</p>
+  </main>
+
+  <script>
+    const state = { token: localStorage.getItem("cy_token") || "", profile: null };
+    const el = {
+      serverStatus: document.getElementById("serverStatus"),
+      guestView: document.getElementById("guestView"),
+      dashboard: document.getElementById("dashboard"),
+      accountNameValue: document.getElementById("accountNameValue"),
+      accountMeta: document.getElementById("accountMeta"),
+      characterList: document.getElementById("characterList"),
+      loginMessage: document.getElementById("loginMessage"),
+      registerMessage: document.getElementById("registerMessage"),
+      characterMessage: document.getElementById("characterMessage")
+    };
+
+    function setMessage(node, type, text) {
+      node.className = "msg" + (type ? " " + type : "");
+      node.textContent = text || "";
+    }
+
+    async function api(path, options = {}) {
+      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+      if (state.token) headers.Authorization = "Bearer " + state.token;
+      const response = await fetch(path, { ...options, headers });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "请求失败");
+      return data;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function renderProfile() {
+      if (!state.profile) {
+        el.guestView.style.display = "block";
+        el.dashboard.classList.remove("active");
+        return;
+      }
+      const { user, characters } = state.profile;
+      el.guestView.style.display = "none";
+      el.dashboard.classList.add("active");
+      el.accountNameValue.textContent = user.accountName;
+      el.accountMeta.textContent = "UID " + user.id + " | 注册时间 " + new Date(user.createdAt).toLocaleString("zh-CN");
+      if (!characters.length) {
+        el.characterList.innerHTML = '<div class="empty">当前账号还没有角色，先创建一个在线角色。</div>';
+        return;
+      }
+      el.characterList.innerHTML = characters.map((item) => `
+        <div class="char">
+          <strong>${escapeHtml(item.name)}</strong>
+          <div class="meta">职业: ${escapeHtml(item.className)}<br>等级: ${item.level}<br>金币: ${item.gold}<br>钻石: ${item.diamond}<br>上次登录: ${new Date(item.lastLoginAt).toLocaleString("zh-CN")}</div>
+        </div>
+      `).join("");
+    }
+
+    async function checkHealth() {
+      try {
+        const data = await api("/api/health", { method: "GET", headers: {} });
+        el.serverStatus.textContent = data.mysql === "connected" ? "服务器在线" : "数据库异常";
+        el.serverStatus.style.color = data.mysql === "connected" ? "var(--ok)" : "var(--danger)";
+      } catch (_) {
+        el.serverStatus.textContent = "服务离线";
+        el.serverStatus.style.color = "var(--danger)";
+      }
+    }
+
+    async function loadProfile() {
+      if (!state.token) {
+        state.profile = null;
+        renderProfile();
+        return;
+      }
+      try {
+        state.profile = await api("/api/auth/me", { method: "GET" });
+      } catch (_) {
+        localStorage.removeItem("cy_token");
+        state.token = "";
+        state.profile = null;
+      }
+      renderProfile();
+    }
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const key = tab.dataset.tab;
+        document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node === tab));
+        document.querySelectorAll(".pane").forEach((node) => node.classList.toggle("active", node.dataset.pane === key));
+      });
+    });
+
+    document.getElementById("registerForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      setMessage(el.registerMessage, "", "");
+      const form = new FormData(event.currentTarget);
+      const accountName = String(form.get("accountName") || "").trim();
+      const password = String(form.get("password") || "");
+      const confirmPassword = String(form.get("confirmPassword") || "");
+      if (password !== confirmPassword) {
+        setMessage(el.registerMessage, "error", "两次输入的密码不一致。");
+        return;
+      }
+      const button = event.currentTarget.querySelector("button[type='submit']");
+      button.disabled = true;
+      try {
+        const data = await api("/api/auth/register", {
+          method: "POST",
+          body: JSON.stringify({ accountName, password })
+        });
+        setMessage(el.registerMessage, "success", data.message);
+        event.currentTarget.reset();
+      } catch (error) {
+        setMessage(el.registerMessage, "error", error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("loginForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      setMessage(el.loginMessage, "", "");
+      const form = new FormData(event.currentTarget);
+      const button = event.currentTarget.querySelector("button[type='submit']");
+      button.disabled = true;
+      try {
+        const data = await api("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({
+            accountName: String(form.get("accountName") || "").trim(),
+            password: String(form.get("password") || "")
+          })
+        });
+        state.token = data.token;
+        localStorage.setItem("cy_token", data.token);
+        setMessage(el.loginMessage, "success", "登录成功，已进入账号中心。");
+        event.currentTarget.reset();
+        await loadProfile();
+      } catch (error) {
+        setMessage(el.loginMessage, "error", error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("characterForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      setMessage(el.characterMessage, "", "");
+      const form = new FormData(event.currentTarget);
+      const button = event.currentTarget.querySelector("button[type='submit']");
+      button.disabled = true;
+      try {
+        const data = await api("/api/characters", {
+          method: "POST",
+          body: JSON.stringify({
+            name: String(form.get("name") || "").trim(),
+            className: String(form.get("className") || "").trim()
+          })
+        });
+        setMessage(el.characterMessage, "success", data.message);
+        event.currentTarget.reset();
+        await loadProfile();
+      } catch (error) {
+        setMessage(el.characterMessage, "error", error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("logoutButton").addEventListener("click", async () => {
+      try { await api("/api/auth/logout", { method: "POST" }); } catch (_) {}
+      state.token = "";
+      state.profile = null;
+      localStorage.removeItem("cy_token");
+      renderProfile();
+      setMessage(el.loginMessage, "success", "已退出登录。");
+    });
+
+    checkHealth();
+    loadProfile();
+  </script>
+</body>
+</html>
