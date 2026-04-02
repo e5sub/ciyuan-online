@@ -2008,14 +2008,14 @@ async function loadLeaderboard(serverId, type) {
     var data = await onlineApi('/api/leaderboard' + qs);
     ONLINE.leaderboard = data.rankings || [];
     ONLINE.leaderboardType = data.type || ONLINE.leaderboardType;
-    if (document.getElementById('hub') && document.querySelector('.hub-tab.active')) {
-      var active = document.querySelector('.hub-tab.active');
-      if (active && active.textContent.indexOf('排行') >= 0) renderHub('leaderboard');
-    }
   } catch (e) {
     ONLINE.leaderboard = [];
   } finally {
     ONLINE.leaderboardLoading = false;
+    if (document.getElementById('hub') && document.querySelector('.hub-tab.active')) {
+      var active = document.querySelector('.hub-tab.active');
+      if (active && active.textContent.indexOf('排行') >= 0) renderHub('leaderboard');
+    }
   }
 }
 
