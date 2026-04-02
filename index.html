@@ -4625,7 +4625,7 @@ function renderBattleField() {
       <span class="b-stage">${G._fromBoss ? '【BOSS挑战】' : G._fromArena ? '【竞技】' : stageLabel()} <span id="b-turn" style="color:#ffd700;font-size:0.5rem">回合 ${B.turn}</span></span>
       <button class="b-spd" onclick="toggleSpeed()">×${B.speed}</button>
     </div>
-    ${G._fromBoss ? `<div class="boss-hp-wrap"><div class="boss-hp-outer"><div class="boss-hp-fill" id="boss-hp-fill" style="width:100%"></div><div class="boss-hp-txt" id="boss-hp-txt">${B.et[0]?B.et[0].hp.toLocaleString():0} / ${B._bossMaxHp?B._bossMaxHp.toLocaleString():0}</div></div></div><div style="display:flex;justify-content:space-between;padding:0 8px"><div class="boss-dmg-total" id="boss-dmg-total">总伤害: 0</div><div id="boss-timer" style="font-size:0.48rem;color:#ff6b6b;font-weight:700">⏱ 10:00</div></div>` : ''}
+    ${G._fromBoss ? `<div class="boss-hp-wrap"><div class="boss-hp-outer"><div class="boss-hp-fill" id="boss-hp-fill" style="width:100%"></div><div class="boss-hp-txt" id="boss-hp-txt">${B._bossInfiniteHp ? '∞ / ∞' : (B.et[0] ? B.et[0].hp.toLocaleString() : 0) + ' / ' + (B._bossMaxHp ? B._bossMaxHp.toLocaleString() : 0)}</div></div></div><div style="display:flex;justify-content:space-between;padding:0 8px"><div class="boss-dmg-total" id="boss-dmg-total">总伤害: 0</div><div id="boss-timer" style="font-size:0.48rem;color:#ff6b6b;font-weight:700">⏱ 10:00</div></div>` : ''}
     <div class="b-field">
       <canvas id="b-particles"></canvas>
       ${enemySide}
@@ -4792,10 +4792,9 @@ function updateBattleUI() {
     const bFill = document.getElementById('boss-hp-fill');
     const bTxt = document.getElementById('boss-hp-txt');
     const bDmg = document.getElementById('boss-dmg-total');
-    if (bFill) bFill.style.width = Math.max(0, (B.et[0].hp / B.et[0].maxHp) * 100) + '%';
-    if (bTxt) bTxt.textContent = Math.max(0, B.et[0].hp).toLocaleString() + ' / ' + B.et[0].maxHp.toLocaleString();
+    if (bFill) bFill.style.width = B._bossInfiniteHp ? '100%' : Math.max(0, (B.et[0].hp / B.et[0].maxHp) * 100) + '%';
+    if (bTxt) bTxt.textContent = B._bossInfiniteHp ? '∞ / ∞' : Math.max(0, B.et[0].hp).toLocaleString() + ' / ' + B.et[0].maxHp.toLocaleString();
     let td = 0; for (const u of B.pt) { if (B.stats[u.id]) td += B.stats[u.id].dmg || 0; }
-    if (B._bossMaxHp) td = Math.min(td, B._bossMaxHp);
     if (bDmg) bDmg.textContent = '总伤害: ' + td.toLocaleString();
   }
 }
@@ -5627,7 +5626,6 @@ function endBattle(won) {
     } else if (G._fromBoss) {
       var totalDmg = 0;
       for (var i = 0; i < B.pt.length; i++) { var uid = B.pt[i].id; if (B.stats[uid] && B.stats[uid].dmg) totalDmg += B.stats[uid].dmg; }
-      if (B._bossMaxHp) totalDmg = Math.min(totalDmg, B._bossMaxHp);
       G.boss.bestDmg = (G.boss.bestDmg || 0) + totalDmg;
       G.boss.lastSettleTime = Date.now(); // Prevent immediate settlement reset
       var tier = getBossDmgTier(G.boss.bestDmg);
@@ -5660,7 +5658,6 @@ function endBattle(won) {
     } else if (G._fromBoss) {
       var totalDmg = 0;
       for (var i = 0; i < B.pt.length; i++) { var uid = B.pt[i].id; if (B.stats[uid] && B.stats[uid].dmg) totalDmg += B.stats[uid].dmg; }
-      if (B._bossMaxHp) totalDmg = Math.min(totalDmg, B._bossMaxHp);
       G.boss.bestDmg = (G.boss.bestDmg || 0) + totalDmg;
       G.boss.lastSettleTime = Date.now(); // Prevent immediate settlement reset
       var tier = getBossDmgTier(G.boss.bestDmg);
@@ -6847,7 +6844,7 @@ function renderBossTab() {
       '<img src="' + bossChar.img + '" style="display:block;margin:0.1rem auto;width:65px;height:65px;border-radius:50%;border:3px solid #ff4444;object-fit:cover">' +
       '<div class="boss-name">\u3010BOSS\u3011' + bossChar.name + '</div>' +
       '<div style="font-size:0.4rem;color:var(--dim);margin-top:0.05rem">' +
-        bossChar.elem + '\u5C5E\u6027 \u00B7 HP ' + (BOSS_HP / 10000).toFixed(1) + '\u4E07' +
+        bossChar.elem + '\u5C5E\u6027 \u00B7 HP \u221E' +
       '</div>' +
     '</div>' +
     '<div style="display:flex;justify-content:space-between;align-items:center;padding:0.2rem;background:rgba(255,50,50,0.08);border-radius:10px;margin:0.15rem 0">' +
@@ -6890,7 +6887,7 @@ function startBossBattle() {
   var baseHP = (5000000 + (G.teamLv || 1) * 500000) * rebirthScale * 3;
   var BOSS_HP = Math.floor(baseHP);
 
-  B = { pt:[], et:[], done:false, turn:0, activeSyn:[], enemySyn:[], _actingUnit:null, _timer:null, speed: G.battleSpeed || 1, paused:false, stats:{} };  B._bossMaxHp = BOSS_HP;
+  B = { pt:[], et:[], done:false, turn:0, activeSyn:[], enemySyn:[], _actingUnit:null, _timer:null, speed: G.battleSpeed || 1, paused:false, stats:{} };  B._bossMaxHp = Infinity; B._bossInfiniteHp = true;
 
   B.pt = formChars.map(function(charId, i) {
     var c = CHARS.find(function(ch) { return ch.id === charId; });
@@ -6913,7 +6910,7 @@ function startBossBattle() {
   B.et = [{
     id: 'boss_0', name: '【BOSS】' + bossChar.name, elem: bossChar.elem, rarity: 'SSR',
     img: bossChar.img, side: 'foe', job: '坦克',
-    maxHp: BOSS_HP, hp: BOSS_HP,
+    maxHp: Infinity, hp: Infinity,
     atk: Math.floor(bossChar.atk * 4.0), def: Math.floor(bossChar.def * 3.5),
     spd: Math.floor(bossChar.spd * 0.9),
     skill: bossChar.skill, ult: bossChar.awakenSkill || bossChar.ult,
