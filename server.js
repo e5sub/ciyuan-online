@@ -144,8 +144,12 @@ async function ensureIndexExists(tableName, indexName, definitionSql) {
 async function ensureSchemaUpgrades() {
   await ensureColumnExists("game_roles", "stage_progress", "INT NOT NULL DEFAULT 1 AFTER power_score");
   await ensureColumnExists("game_roles", "arena_points", "INT NOT NULL DEFAULT 0 AFTER stage_progress");
+  await ensureIndexExists("game_roles", "idx_game_roles_power_score", "(power_score DESC, level DESC, updated_at ASC)");
   await ensureIndexExists("game_roles", "idx_game_roles_stage_progress", "(stage_progress DESC)");
   await ensureIndexExists("game_roles", "idx_game_roles_arena_points", "(arena_points DESC)");
+  await ensureIndexExists("game_roles", "idx_game_roles_server_power", "(server_id, power_score DESC, level DESC, updated_at ASC)");
+  await ensureIndexExists("game_roles", "idx_game_roles_server_stage", "(server_id, stage_progress DESC, power_score DESC, updated_at ASC)");
+  await ensureIndexExists("game_roles", "idx_game_roles_server_arena", "(server_id, arena_points DESC, power_score DESC, updated_at ASC)");
   await pool.execute(
     `UPDATE game_roles r
      LEFT JOIN role_game_saves rs ON rs.role_id = r.id
@@ -157,6 +161,35 @@ async function ensureSchemaUpgrades() {
          OR r.arena_points <=> 0
        )`
   );
+}
+
+const LEADERBOARD_CACHE_TTL_MS = 30000;
+const leaderboardCache = new Map();
+
+function getLeaderboardCacheKey(type, serverId) {
+  return `${type}:${Number(serverId || 0)}`;
+}
+
+function readLeaderboardCache(type, serverId) {
+  const key = getLeaderboardCacheKey(type, serverId);
+  const cached = leaderboardCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.createdAt > LEADERBOARD_CACHE_TTL_MS) {
+    leaderboardCache.delete(key);
+    return null;
+  }
+  return cached.payload;
+}
+
+function writeLeaderboardCache(type, serverId, payload) {
+  leaderboardCache.set(getLeaderboardCacheKey(type, serverId), {
+    createdAt: Date.now(),
+    payload
+  });
+}
+
+function clearLeaderboardCache() {
+  leaderboardCache.clear();
 }
 
 function normalizeArenaSave(saveData) {
@@ -301,12 +334,17 @@ app.get("/api/leaderboard", authRequired, async (req, res) => {
   const serverId = Number(req.query.serverId || 0);
   const requestedType = String(req.query.type || "power").trim();
   const leaderboardType = ["power", "stage", "arena"].includes(requestedType) ? requestedType : "power";
+  const cachedPayload = readLeaderboardCache(leaderboardType, serverId);
   const params = {};
   let whereSql = "";
   let extraJoinSql = "";
   let metricSql = "r.power_score";
   let orderSql = "r.power_score DESC, r.level DESC, r.updated_at ASC";
   let metricAlias = "powerScore";
+
+  if (cachedPayload) {
+    return res.json(cachedPayload);
+  }
 
   if (serverId) {
     whereSql = "WHERE r.server_id = :serverId";
@@ -339,11 +377,13 @@ app.get("/api/leaderboard", authRequired, async (req, res) => {
     params
   );
 
-  res.json({
+  const payload = {
     type: leaderboardType,
     serverId: serverId || null,
     rankings: rows
-  });
+  };
+  writeLeaderboardCache(leaderboardType, serverId, payload);
+  res.json(payload);
 });
 
 app.get("/api/arena/opponents", authRequired, roleRequired, async (req, res) => {
@@ -441,6 +481,7 @@ app.post("/api/roles", authRequired, async (req, res) => {
      VALUES (:roleId, :saveData)`,
     { roleId: insertResult.insertId, saveData: JSON.stringify({}) }
   );
+  clearLeaderboardCache();
 
   res.status(201).json({
     message: "ROLE_CREATE_OK",
@@ -518,6 +559,7 @@ app.put("/api/game/save", authRequired, roleRequired, async (req, res) => {
       arenaPoints: Number((((saveData || {}).arena || {}).points) || 0)
     }
   );
+  clearLeaderboardCache();
 
   res.json({ message: "SAVE_SYNC_OK", updatedAt: new Date().toISOString() });
 });

@@ -42,8 +42,12 @@ CREATE TABLE IF NOT EXISTS game_roles (
   last_login_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_game_roles_power_score (power_score DESC, level DESC, updated_at ASC),
   INDEX idx_game_roles_stage_progress (stage_progress DESC),
   INDEX idx_game_roles_arena_points (arena_points DESC),
+  INDEX idx_game_roles_server_power (server_id, power_score DESC, level DESC, updated_at ASC),
+  INDEX idx_game_roles_server_stage (server_id, stage_progress DESC, power_score DESC, updated_at ASC),
+  INDEX idx_game_roles_server_arena (server_id, arena_points DESC, power_score DESC, updated_at ASC),
   CONSTRAINT fk_game_roles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_game_roles_server FOREIGN KEY (server_id) REFERENCES game_servers(id) ON DELETE CASCADE,
   CONSTRAINT uk_game_roles_server_name UNIQUE (server_id, role_name)

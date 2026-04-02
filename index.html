@@ -2052,6 +2052,13 @@ async function onlineApi(path, options) {
   return data;
 }
 
+function primeLeaderboardCaches() {
+  if (!ONLINE.token) return;
+  ['power', 'stage', 'arena'].forEach(function(type) {
+    onlineApi('/api/leaderboard?type=' + encodeURIComponent(type)).catch(function() {});
+  });
+}
+
 async function fetchOnlineProfile() {
   if (!ONLINE.token) { ONLINE.profile = null; return null; }
   try {
@@ -2065,6 +2072,7 @@ async function fetchOnlineProfile() {
         try { localStorage.removeItem('dcg_role_id'); } catch(err) {}
       }
     }
+    setTimeout(primeLeaderboardCaches, 0);
     return ONLINE.profile;
   } catch (e) {
     ONLINE.token = '';
