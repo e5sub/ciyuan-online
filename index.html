@@ -2368,9 +2368,11 @@ function renderLeaderboardTab() {
       rowsHtml += '<div style="display:flex;align-items:center;gap:0.35rem;padding:0.32rem;border-bottom:1px solid var(--border)">' +
         '<div style="width:1.2rem;font-size:0.5rem;font-weight:900;color:' + (j < 3 ? 'var(--gold)' : 'var(--dim)') + '">#' + (j + 1) + '</div>' +
         '<div style="flex:1">' +
-          '<div style="font-size:0.46rem;font-weight:700;color:var(--text)">' + r.roleName + '</div>' +
+          '<div style="display:flex;align-items:center;gap:0.18rem;flex-wrap:wrap">' +
+            '<div style="font-size:0.46rem;font-weight:700;color:var(--text)">' + r.roleName + '</div>' +
+            '<button onclick="showLeaderboardFormation(' + Number(r.id) + ')" style="padding:0.08rem 0.28rem;border:none;border-radius:8px;background:var(--c2);color:#fff;font-size:0.32rem;cursor:pointer">查看阵容</button>' +
+          '</div>' +
           '<div style="font-size:0.34rem;color:var(--dim)">' + r.serverName + ' | Lv.' + r.level + '</div>' +
-          '<div style="margin-top:0.14rem"><button onclick="showLeaderboardFormation(' + Number(r.id) + ')" style="padding:0.14rem 0.38rem;border:none;border-radius:8px;background:var(--c2);color:#fff;font-size:0.34rem;cursor:pointer">查看阵容</button></div>' +
         '</div>' +
         '<div style="text-align:right">' +
           '<div style="font-size:0.46rem;font-weight:900;color:var(--accent)">' + metricText + '</div>' +
