@@ -2019,6 +2019,72 @@ async function loadLeaderboard(serverId, type) {
   }
 }
 
+async function showLeaderboardFormation(roleId) {
+  if (!roleId) return;
+  var overlay = document.createElement('div');
+  overlay.className = 'game-toast-overlay';
+  var box = document.createElement('div');
+  box.className = 'game-toast';
+  box.style.maxWidth = '7.2rem';
+  box.innerHTML =
+    '<div class="game-toast-title">查看阵容</div>' +
+    '<div id="leaderboard-formation-body" class="game-toast-body" style="text-align:center;color:var(--dim);padding:0.6rem 0">加载中...</div>' +
+    '<div style="display:flex;justify-content:center;margin-top:0.35rem">' +
+      '<button class="game-toast-btn" style="background:var(--c3);color:var(--text)" onclick="this.closest(\'.game-toast\').remove();document.querySelector(\'.game-toast-overlay\').remove()">关闭</button>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  document.body.appendChild(box);
+  overlay.onclick = function() { box.remove(); overlay.remove(); };
+
+  try {
+    var data = await onlineApi('/api/leaderboard/' + Number(roleId) + '/formation');
+    var player = data && data.player;
+    var target = document.getElementById('leaderboard-formation-body');
+    if (!target) return;
+    target.innerHTML = player ? renderLeaderboardFormationPreview(player) : '<div style="padding:0.4rem 0">该玩家暂无可查看阵容</div>';
+  } catch (e) {
+    var errTarget = document.getElementById('leaderboard-formation-body');
+    if (errTarget) errTarget.innerHTML = '<div style="padding:0.4rem 0">加载失败: ' + e.message + '</div>';
+  }
+}
+
+function renderLeaderboardFormationPreview(player) {
+  var state = buildArenaStateFromPlayer(player);
+  var formation = (state.formation || []).slice(0, 6);
+  var jobMeta = {
+    '坦克': { cls: 'tank' },
+    '战士': { cls: 'warrior' },
+    '法师': { cls: 'mage' },
+    '刺客': { cls: 'assassin' },
+    '辅助': { cls: 'support' }
+  };
+
+  function slot(idx) {
+    var id = formation[idx];
+    var c = id ? CHARS.find(function(ch) { return ch.id === id; }) : null;
+    var roster = id ? state.roster[id] : null;
+    if (!c || !roster) return '<div class="f-slot empty">空位</div>';
+    var jm = jobMeta[c.job] || { cls: 'dps' };
+    return '<div class="f-slot filled ' + rarCls(c.rarity) + '">' +
+      '<img src="' + c.img + '" alt="' + c.name + '" loading="lazy">' +
+      '<div class="f-slot-nm">' + c.name + '</div>' +
+      '<div class="f-slot-lv"><span class="job-badge ' + jm.cls + '">' + c.job + '</span> ★' + Number(roster.star || 0) + '</div>' +
+    '</div>';
+  }
+
+  return '<div style="text-align:center">' +
+    '<div style="font-size:0.52rem;font-weight:900;color:var(--text)">' + player.roleName + '</div>' +
+    '<div style="font-size:0.34rem;color:var(--dim);margin-top:0.08rem">' + player.serverName + ' · Lv.' + player.level + ' · 队伍Lv.' + (player.teamLv || 1) + (player.rebirth ? (' · ' + player.rebirth + '转') : '') + '</div>' +
+    '<div style="font-size:0.36rem;color:var(--accent);margin:0.12rem 0 0.3rem">战力 ' + Number(player.powerScore || 0).toLocaleString() + '</div>' +
+    '<div class="form-field" style="padding:0.3rem">' +
+      '<div class="form-rl">🛡️ 前排</div>' +
+      '<div class="form-row">' + slot(0) + slot(1) + slot(2) + '</div>' +
+      '<div class="form-rl" style="margin-top:0.1rem">⚔️ 后排</div>' +
+      '<div class="form-row">' + slot(3) + slot(4) + slot(5) + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
 async function loadArenaOpponents(force) {
   if (!ONLINE.token || !ONLINE.selectedRoleId) return [];
   if (!force && ONLINE.arenaOpponents && ONLINE.arenaOpponents.length) return ONLINE.arenaOpponents;
@@ -2304,6 +2370,7 @@ function renderLeaderboardTab() {
         '<div style="flex:1">' +
           '<div style="font-size:0.46rem;font-weight:700;color:var(--text)">' + r.roleName + '</div>' +
           '<div style="font-size:0.34rem;color:var(--dim)">' + r.serverName + ' | Lv.' + r.level + '</div>' +
+          '<div style="margin-top:0.14rem"><button onclick="showLeaderboardFormation(' + Number(r.id) + ')" style="padding:0.14rem 0.38rem;border:none;border-radius:8px;background:var(--c2);color:#fff;font-size:0.34rem;cursor:pointer">查看阵容</button></div>' +
         '</div>' +
         '<div style="text-align:right">' +
           '<div style="font-size:0.46rem;font-weight:900;color:var(--accent)">' + metricText + '</div>' +

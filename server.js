@@ -386,6 +386,55 @@ app.get("/api/leaderboard", authRequired, async (req, res) => {
   res.json(payload);
 });
 
+app.get("/api/leaderboard/:roleId/formation", authRequired, async (req, res) => {
+  const roleId = Number(req.params.roleId || 0);
+  if (!roleId) return res.status(400).json({ message: "ROLE_ID_REQUIRED" });
+
+  const [rows] = await pool.execute(
+    `SELECT r.id, r.role_name AS roleName, r.level, r.power_score AS powerScore,
+            s.id AS serverId, s.server_name AS serverName, s.server_code AS serverCode,
+            u.account_name AS accountName,
+            rs.save_data AS saveData
+     FROM game_roles r
+     INNER JOIN users u ON u.id = r.user_id
+     INNER JOIN game_servers s ON s.id = r.server_id
+     INNER JOIN role_game_saves rs ON rs.role_id = r.id
+     WHERE r.id = :roleId
+       AND u.status = 'active'
+     LIMIT 1`,
+    { roleId }
+  );
+
+  if (!rows.length) return res.status(404).json({ message: "ROLE_NOT_FOUND" });
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(rows[0].saveData);
+  } catch (error) {
+    parsed = null;
+  }
+
+  const arenaSave = normalizeArenaSave(parsed);
+  if (!arenaSave) return res.status(404).json({ message: "FORMATION_NOT_FOUND" });
+
+  res.json({
+    player: {
+      id: rows[0].id,
+      roleName: rows[0].roleName,
+      accountName: rows[0].accountName,
+      serverId: rows[0].serverId,
+      serverName: rows[0].serverName,
+      serverCode: rows[0].serverCode,
+      level: rows[0].level,
+      powerScore: rows[0].powerScore,
+      teamLv: arenaSave.teamLv,
+      rebirth: arenaSave.rebirth,
+      formation: arenaSave.formation,
+      roster: arenaSave.roster
+    }
+  });
+});
+
 app.get("/api/arena/opponents", authRequired, roleRequired, async (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit || 3), 1), 12);
   const [rows] = await pool.execute(
