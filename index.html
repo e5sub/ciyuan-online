@@ -2432,6 +2432,149 @@ function xorEncrypt(str, key) {
   return out.join('');
 }
 
+async function copyTextValue(text) {
+  var copied = false;
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    copied = document.execCommand('copy');
+    document.body.removeChild(ta);
+  } catch(e) {}
+  if (!copied) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch(e) {}
+  }
+  return copied;
+}
+
+function compactFormationShare() {
+  var formation = (G.formation || []).slice(0, 6).map(function(id) {
+    return id || '';
+  });
+  return JSON.stringify({ f: formation });
+}
+
+async function exportFormationShare() {
+  try {
+    var activeCount = (G.formation || []).filter(Boolean).length;
+    if (!activeCount) {
+      gameToast('提示', '当前阵容为空，先编入角色再分享');
+      return;
+    }
+    var payload = compactFormationShare();
+    var code;
+    if (typeof CompressionStream !== 'undefined') {
+      var compressed = await deflateCompress(payload);
+      var encrypted = xorEncrypt(compressed, _SAVE_KEY);
+      code = 'F2|' + btoa(unescape(encodeURIComponent(encrypted)));
+    } else {
+      var encrypted = xorEncrypt(payload, _SAVE_KEY);
+      code = 'F1|' + btoa(unescape(encodeURIComponent(encrypted)));
+    }
+    var copied = await copyTextValue(code);
+    if (copied) gameToast('分享成功', '阵容分享码已复制到剪贴板\n\n长度: ' + code.length + ' 字符');
+    else gameToast('阵容分享码', '请手动复制:\n\n<span style="font-size:0.35rem;word-break:break-all;user-select:all;color:#2dd4bf">' + code + '</span>');
+  } catch(e) {
+    gameToast('分享失败', '错误: ' + e.message);
+  }
+}
+
+function importFormationShare() {
+  var overlay = document.createElement('div');
+  overlay.className = 'game-toast-overlay';
+  var box = document.createElement('div');
+  box.className = 'game-toast';
+  box.innerHTML =
+    '<div class="game-toast-title">导入阵容分享码</div>' +
+    '<div class="game-toast-body">粘贴 F2|... 或 F1|... 分享码后，将按你已拥有角色自动复制阵容站位。</div>' +
+    '<textarea id="formation-import-ta" style="width:100%;height:60px;margin:0.3rem 0;background:var(--c2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:0.3rem;font-size:0.38rem;resize:none" placeholder="粘贴 F2|... 或 F1|... 阵容分享码"></textarea>' +
+    '<div style="display:flex;gap:0.5rem;justify-content:center">' +
+    '<button class="game-toast-btn" onclick="doImportFormationShare()">复制阵容</button>' +
+    '<button class="game-toast-btn" style="background:var(--c3);color:var(--dim)" onclick="this.closest(\'.game-toast\').remove();document.querySelector(\'.game-toast-overlay\').remove()">取消</button>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  document.body.appendChild(box);
+  overlay.onclick = function() { box.remove(); overlay.remove(); };
+}
+
+async function doImportFormationShare() {
+  try {
+    var ta = document.getElementById('formation-import-ta');
+    var code = (ta ? ta.value : '').trim();
+    var compact;
+    if (code.startsWith('F2|')) {
+      var encrypted2 = decodeURIComponent(escape(atob(code.substring(3))));
+      var compressed = xorEncrypt(encrypted2, _SAVE_KEY);
+      compact = await deflateDecompress(compressed);
+    } else if (code.startsWith('F1|')) {
+      var encrypted1 = decodeURIComponent(escape(atob(code.substring(3))));
+      compact = xorEncrypt(encrypted1, _SAVE_KEY);
+    } else {
+      gameToast('导入失败', '无效格式，需以 F2| 或 F1| 开头');
+      return;
+    }
+
+    var parsed = JSON.parse(compact);
+    var formation = Array.isArray(parsed && parsed.f) ? parsed.f.slice(0, 6) : null;
+    if (!formation) {
+      gameToast('导入失败', '分享码数据不完整');
+      return;
+    }
+
+    var validIds = {};
+    CHARS.forEach(function(c) { validIds[c.id] = true; });
+
+    var nextFormation = [null, null, null, null, null, null];
+    var missing = [];
+    var invalid = [];
+    var used = {};
+    for (var i = 0; i < 6; i++) {
+      var id = formation[i] || '';
+      if (!id) continue;
+      if (!validIds[id]) {
+        invalid.push(id);
+        continue;
+      }
+      if (used[id]) continue;
+      used[id] = true;
+      if (G.roster && G.roster[id]) nextFormation[i] = id;
+      else missing.push(id);
+    }
+
+    if (!nextFormation.filter(Boolean).length) {
+      var failMsg = missing.length ? ('你未拥有分享阵容中的角色：' + missing.map(function(id) {
+        var c = CHARS.find(function(ch) { return ch.id === id; });
+        return c ? c.name : id;
+      }).join('、')) : '没有可复制的有效角色';
+      gameToast('复制失败', failMsg);
+      return;
+    }
+
+    G.formation = nextFormation;
+    saveGame();
+    var box = document.querySelector('.game-toast');
+    var overlay = document.querySelector('.game-toast-overlay');
+    if (box) box.remove();
+    if (overlay) overlay.remove();
+    renderHub('team');
+
+    var missingNames = missing.map(function(id) {
+      var c = CHARS.find(function(ch) { return ch.id === id; });
+      return c ? c.name : id;
+    });
+    var msg = '阵容已复制到当前站位';
+    if (missingNames.length) msg += '\n\n未拥有角色: ' + missingNames.join('、');
+    if (invalid.length) msg += '\n\n无效角色: ' + invalid.join('、');
+    gameToast('复制成功', msg);
+  } catch(e) {
+    gameToast('导入失败', '解析错误: ' + e.message);
+  }
+}
+
 // Compact save: strip defaults, short keys
 function compactSave() {
   var c = {};
@@ -2533,13 +2676,7 @@ async function exportSave() {
       code = 'D1|' + btoa(unescape(encodeURIComponent(encrypted)));
     }
     // Copy to clipboard
-    var copied = false;
-    try {
-      var ta = document.createElement('textarea');
-      ta.value = code; document.body.appendChild(ta); ta.select();
-      copied = document.execCommand('copy'); document.body.removeChild(ta);
-    } catch(e) {}
-    if (!copied) { try { await navigator.clipboard.writeText(code); copied = true; } catch(e) {} }
+    var copied = await copyTextValue(code);
     if (copied) gameToast('导出成功', '存档已复制到剪贴板\n\n长度: ' + code.length + ' 字符');
     else gameToast('导出', '请手动复制:\n\n<span style="font-size:0.35rem;word-break:break-all;user-select:all;color:#2dd4bf">' + code + '</span>');
   } catch(e) { gameToast('导出失败', '错误: ' + e.message); }
@@ -2955,6 +3092,10 @@ function renderTeamTab() {
       <div class="form-row">${slotHTML(3)}${slotHTML(4)}${slotHTML(5)}</div>
     </div>
     <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin:4px 0">${jobSummary || '<span style="opacity:0.3;font-size:0.45rem">编入角色查看职业构成</span>'}</div>
+    <div style="display:flex;gap:0.25rem;justify-content:center;flex-wrap:wrap;margin:0.2rem 0 0.15rem">
+      <button class="game-toast-btn" style="min-width:2.6rem;padding:0.2rem 0.35rem" onclick="exportFormationShare()">分享阵容</button>
+      <button class="game-toast-btn" style="min-width:2.6rem;padding:0.2rem 0.35rem;background:var(--c3);color:var(--text)" onclick="importFormationShare()">输入分享码</button>
+    </div>
     ${synHTML || '<div style="text-align:center;font-size:0.38rem;color:var(--dim);margin:4px 0;opacity:0.5">无激活羁绊 · 前往「羁绊」页查看全部</div>'}
     <div style="font-size:0.4rem;color:var(--dim);text-align:center;margin:2px 0">点击角色上阵 · 建议: 坦克前排 + 输出后排 + 辅助</div>
     ${(function(){
